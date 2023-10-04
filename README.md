@@ -41,5 +41,4 @@ pre-commit run --all-files
 
 This will execute the configured hooks on all files in the repository.
 
-Now, whenever you attempt to commit changes, the `nbqa` hooks will be triggered, ensuring consistent formatting and code quality.
-```
+Now, whenever you attempt to commit changes, the hooks will be triggered, ensuring consistent formatting and code quality.
