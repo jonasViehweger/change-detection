@@ -6,7 +6,7 @@ format:
   image: python:3.10
   stage: format
   before_script:
-    - pip install nbqa==1.7.0
+    - pip install black nbqa==1.7.0
   script:
     - nbqa black . --check --diff --config pyproject.toml
   only:
@@ -17,7 +17,7 @@ lint:
   image: python:3.10
   stage: lint
   before_script:
-    - pip install nbqa==1.7.0
+    - pip install ruff nbqa==1.7.0
   script:
     - nbqa ruff . --diff --config pyproject.toml
   only:
