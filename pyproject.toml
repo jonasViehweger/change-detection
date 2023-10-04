@@ -93,6 +93,7 @@ section-order = [
     "third-party",
     "first-party",
     "local-folder",
+    "notebook-utilities",
 ]
 
 [tool.nbqa.addopts]
