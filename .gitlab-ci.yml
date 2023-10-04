@@ -1,25 +1,13 @@
 stages:
-  - format
-  - lint
+  - format/lint
 
-format:
+format/lint:
   image: python:3.10
   stage: format
   before_script:
-    - pip install black nbqa==1.7.0
+    - pip install pre-commit
   script:
-    - nbqa black . --check --diff --config pyproject.toml
-  only:
-    - main
-    - merge_requests
-
-lint:
-  image: python:3.10
-  stage: lint
-  before_script:
-    - pip install ruff nbqa==1.7.0
-  script:
-    - nbqa ruff . --diff --config pyproject.toml
+    - pre-commit run --all-files
   only:
     - main
     - merge_requests

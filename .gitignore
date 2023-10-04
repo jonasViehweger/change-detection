@@ -53,6 +53,12 @@ pythonenv/
 *.sublime-workspace
 *.sublime-project
 
+# VsCode
+.vscode/         # Visual Studio Code settings
+
+# mypy
+.mypy_cache/     # Mypy cache
+
 # PyCharm
 .idea
 
