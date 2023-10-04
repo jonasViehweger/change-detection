@@ -1,7 +1,7 @@
 stages:
-  - format/lint
+  - format
 
-format/lint:
+format:
   image: python:3.10
   stage: format
   before_script:
