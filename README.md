@@ -9,7 +9,11 @@ To isolate your project's dependencies, create and activate a virtual environmen
 python3 -m venv env
 
 # Activate the virtual environment
+#For Linux/MacOs
 source env/bin/activate
+
+# For Windows
+.\env\Scripts\activate
 
 ```
 
