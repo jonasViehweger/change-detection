@@ -1,6 +1,6 @@
 # Basic Project Structure
 
-These is the basic structure of your repository
+This is the basic structure of your repository
 
 <pre>
 project_name/
