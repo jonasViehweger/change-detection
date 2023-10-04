@@ -1,26 +1,22 @@
-# Basic Structure: Run the Hooks
+# Basic Project Structure
+
+These is the basic structure of your repository
+
+<pre>
 project_name/
 │
-├── .git/                         # Git repository and metadata
 ├── .gitignore                    # Gitignore file to specify ignored files and directories
+├── gitlab-ci.yml                 # Basic GitLab CI file
+├── pre-commit-config.yaml        # Basic pre-commit config file
+├── pyproject.toml                # TOML configuration file often used for tool settings and project metadata
 ├── README.md                     # Project README with an overview, setup, and usage instructions
 ├── requirements.txt              # File listing project dependencies
-├── setup.py                      # Setup file for packaging and distribution
-│   ├── src/                      # Source code directory
-│   │   └── project_name/        # Python package directory
-│   │       ├── __init__.py      # Package initialization file
-│   │       ├── module1.py       # Module 1 source code
-│   │       └── module2.py       # Module 2 source code
-│   └── ...
-├── tests/                        # Test directory
-│   ├── test_module1.py          # Unit tests for module1
-│   └── test_module2.py          # Unit tests for module2
-├── docs/                         # Documentation directory (optional)
-│   ├── index.md                  # Main documentation file
-├── examples/                     # Directory for example usage of the project (optional)
+├── requirements-dev.txt          # File listing project dependencies for development
+├── data/                         # Directory with data archives; add files here and include in gitinore if needed (optional)
 ├── notebooks/                    # Directory for Jupyter notebooks (optional)
-└── scripts/                      # Directory for utility scripts (optional)
-
+├── scripts/                      # Directory for Python scripts (optional)
+└── env/                          # Your environment (This will be in gitignore)
+</pre>
 
 # Setting Up a Virtual Environment and Running Pre-commit Hooks
 
