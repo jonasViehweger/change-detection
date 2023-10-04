@@ -1,6 +1,6 @@
 # Basic Project Structure
 
-This is the basic structure of your repository
+This is a basic project template, which is composed only by python scripts and notebooks, some data folder and documentation. You may need to add extensions to gititnore if needed.
 
 <pre>
 project_name/
