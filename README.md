@@ -25,7 +25,7 @@ project_name/
 To isolate your project's dependencies, create and activate a virtual environment using Python's built-in `venv`:
 
 ```bash
-# Create a virtual environment named "myenv"
+# Create a virtual environment named "env"
 python3 -m venv env
 
 # Activate the virtual environment
@@ -44,7 +44,7 @@ Next, install requirements and requirements-dev.
 ```bash
 # Ensure you are inside the activated virtual environment
 # Install requirements using pip
-pip install -r requirements-dev.txt requirements.txt
+pip install -r requirements-dev.txt -r requirements.txt
 ```
 
 ## Step 3: Install the Hooks
