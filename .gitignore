@@ -100,3 +100,5 @@ target/
 
 # Pycopy
 __pycache__/
+
+scripts/data/

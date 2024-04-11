@@ -1,1 +1,10 @@
-#Libraries that your project use
+authlib
+boto3
+dask
+ipykernel
+matplotlib
+rioxarray
+s3fs
+sentinelhub
+xarray
+zarr
