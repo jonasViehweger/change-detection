@@ -28,8 +28,6 @@ function evaluatePixel(samples, scene) {
   if (clearTs.length == 0) {
     return [NaN, NaN, NaN];
   }
-  const clearScenes = scene.orbits.filter((item, i) => clear[i]);
-  const dates = clearScenes.map((scene) => new Date(scene.dateFrom));
   let X = [];
   for (let i = 0; i < fullX.length; i++) {
     let clearX = fullX[i].filter((item, i) => clear[i]);
@@ -83,23 +81,34 @@ function lstsq(X, y) {
   return vectorMatrixMul(XTX, XTY);
 }
 
-dot = (a, b) => a.map((x, i) => a[i] * b[i]).reduce((m, n) => m + n);
+function dot(A, B) {
+  let result = 0;
+  for (let i = 0; i < A.length; i++) {
+    result += A[i] * B[i];
+  }
+  return result;
+}
 
 function transpose(a) {
   return a[0].map((_, colIndex) => a.map((row) => row[colIndex]));
 }
 
-//The chosen one
-function matrixDot(A, B) {
-  var result = new Array(A.length)
-    .fill(0)
-    .map((row) => new Array(B[0].length).fill(0));
-
-  return result.map((row, i) => {
-    return row.map((val, j) => {
-      return A[i].reduce((sum, elm, k) => sum + elm * B[k][j], 0);
-    });
-  });
+function matrixDot(a, b) {
+  var aNumRows = a.length,
+    aNumCols = a[0].length,
+    bNumRows = b.length,
+    bNumCols = b[0].length,
+    m = new Array(aNumRows); // initialize array of rows
+  for (var r = 0; r < aNumRows; ++r) {
+    m[r] = new Array(bNumCols); // initialize the current row
+    for (var c = 0; c < bNumCols; ++c) {
+      m[r][c] = 0; // initialize the current cell
+      for (var i = 0; i < aNumCols; ++i) {
+        m[r][c] += a[r][i] * b[i][c];
+      }
+    }
+  }
+  return m;
 }
 
 function vectorMatrixMul(A, B) {

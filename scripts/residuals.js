@@ -119,7 +119,13 @@ function lstsq(X, y) {
   return vectorMatrixMul(XTX, XTY);
 }
 
-dot = (a, b) => a.map((x, i) => a[i] * b[i]).reduce((m, n) => m + n);
+function dot(A, B) {
+  let result = 0;
+  for (let i = 0; i < A.length; i++) {
+    result += A[i] * B[i];
+  }
+  return result;
+}
 
 function transpose(a) {
   return a[0].map((_, colIndex) => a.map((row) => row[colIndex]));

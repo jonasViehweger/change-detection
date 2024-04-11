@@ -66,4 +66,14 @@ function makeRegression(dates) {
   return [intersect, XSin, XCos];
 }
 
-dot = (a, b) => a.map((x, i) => a[i] * b[i]).reduce((m, n) => m + n);
+var s6 = 0,
+  l6 = v.length;
+for (var i6 = 0; i6 < l6; i6++) s6 += v[i6] * w[i6];
+
+function dot(a, b) {
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result += a[i] * b[i];
+  }
+  return result;
+}
