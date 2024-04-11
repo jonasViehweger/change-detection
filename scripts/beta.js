@@ -23,17 +23,31 @@ function evaluatePixel(samples, scene) {
   if (samples.length == 0) {
     return [NaN, NaN, NaN];
   }
-  const clear = samples.map((sample) => isClear(sample));
-  const clearTs = samples.filter((item, i) => clear[i]);
-  if (clearTs.length == 0) {
-    return [NaN, NaN, NaN];
+  let y = [];
+  let X = [[],[],[]];
+  for (let i = 0; i < samples.length; i++) {
+    const sample = samples[i]
+    if(sample.dataMask == 1){
+      y.push(index(sample.SR4, sample.SR3))
+      for (let j = 0; j < fullX.length; j++) {
+        X[j].push(fullX[j][i])
+      }
+    }
   }
-  let X = [];
-  for (let i = 0; i < fullX.length; i++) {
-    let clearX = fullX[i].filter((item, i) => clear[i]);
-    X[i] = clearX;
+  if(y.length == 0){
+    return[NaN, NaN, NaN]
   }
-  const y = clearTs.map((sample) => calcNDVI(sample));
+  // const clear = samples.map((sample) => isClear(sample));
+  // const clearTs = samples.filter((item, i) => clear[i]);
+  // if (clearTs.length == 0) {
+  //   return [NaN, NaN, NaN];
+  // }
+  // let X = [];
+  // for (let i = 0; i < fullX.length; i++) {
+  //   let clearX = fullX[i].filter((item, i) => clear[i]);
+  //   X[i] = clearX;
+  // }
+  // const y = clearTs.map((sample) => calcNDVI(sample));
   const beta = lstsq(X, y);
   return beta;
 }
@@ -50,8 +64,9 @@ function dateToDecimalDate(date) {
   // Takes a UTM date object and returns doy divided by lenght of year in days
   // i.e. 0 for first of january, 1 for midnight at 12
   const start = new Date(Date.UTC(date.getUTCFullYear(), 0, 0));
-  const end = new Date(Date.UTC(date.getUTCFullYear() + 1, 0, 0));
-  const diffYear = end - start;
+  // const end = new Date(Date.UTC(date.getUTCFullYear() + 1, 0, 0));
+  // const diffYear = end - start;
+  const diffYear = 31622400000;
   return (date - start) / diffYear;
 }
 
@@ -59,16 +74,16 @@ function makeRegression(dates) {
   // This converts dates to decimal dates and those into a harmonic regression of the first order
   // with cos and sin over a year
   const harmonicOrder = 1;
-  let XSin = [];
-  let XCos = [];
   let n = dates.length;
+  let XSin = new Float32Array(n);
+  let XCos = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     let decimalDate = dateToDecimalDate(dates[i]);
     let Xharmon = 2 * Math.PI * decimalDate * harmonicOrder;
-    XSin.push(Math.sin(Xharmon));
-    XCos.push(Math.cos(Xharmon));
+    XSin[i] = Math.sin(Xharmon);
+    XCos[i] = Math.cos(Xharmon);
   }
-  let intersect = new Array(n);
+  let intersect = new Uint8Array(n);
   for (let i = 0; i < n; ++i) intersect[i] = 1;
   return [intersect, XSin, XCos];
 }
@@ -89,8 +104,18 @@ function dot(A, B) {
   return result;
 }
 
-function transpose(a) {
-  return a[0].map((_, colIndex) => a.map((row) => row[colIndex]));
+function transpose(matrix) {
+  const rows = matrix.length, cols = matrix[0].length;
+  const grid = [];
+  for (let j = 0; j < cols; j++) {
+    grid[j] = Array(rows);
+  }
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      grid[j][i] = matrix[i][j];
+    }
+  }
+  return grid;
 }
 
 function matrixDot(a, b) {
