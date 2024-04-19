@@ -51,9 +51,7 @@ function evaluatePixel(samples) {
     var pred = dot([[X[0][i]], [X[1][i]], [X[2][i]]], beta);
     residuals[i] = pred - y[i];
   }
-  const valsMean = mean(residuals);
-  const valsStd = std(residuals, valsMean);
-  return [valsStd];
+  return [rmse(residuals)];
 }
 
 function sum(array) {
@@ -66,6 +64,14 @@ function sum(array) {
 
 function mean(array) {
   return sum(array) / array.length;
+}
+
+function rmse(residuals) {
+  let sum = 0;
+  for (let i = 0; i < residuals.length; i++) {
+    sum += Math.pow(residuals[i], 2);
+  }
+  return Math.sqrt(sum / residuals.length);
 }
 
 function std(array, mean) {

@@ -102,3 +102,6 @@ target/
 __pycache__/
 
 scripts/data/
+
+*.tif
+*.tif.aux.xml
