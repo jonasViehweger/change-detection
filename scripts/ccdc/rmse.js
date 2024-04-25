@@ -1,9 +1,16 @@
+const HARMONICS = 2;
+var bands = new Array(HARMONICS*2+2);
+for (let i=0; i<HARMONICS*2+1; i++){
+	bands[i] = "c"+(i+1);
+}
+bands[bands.length-1] = "process";
+
 function setup() {
   return {
     input: [
       {
         datasource: "beta",
-        bands: ["c1", "c2", "c3", "process"],
+        bands: bands,
         mosaicking: "SIMPLE",
       },
       {
@@ -35,16 +42,16 @@ function evaluatePixel(samples) {
   }
   var mse = 0;
   var valid = 0;
+  const b = samples.beta[0];
   for (let i = 0; i < samples.ARPS.length; i++) {
     const sample = samples.ARPS[i];
     if (sample.dataMask == 1) {
       const y = index(sample.SR4, sample.SR3);
-      var X = [[], [], []];
-      for (let j = 0; j < fullX.length; j++) {
-        X[j][0] = fullX[j][i];
+      const X = fullX[i];
+      var beta = new Array(HARMONICS*2+1);
+      for(let i=0; i<beta.length;i++){
+        beta[i] = b["c"+(i+1)]
       }
-      const b = samples.beta[0];
-      const beta = [b.c1, b.c2, b.c3];
       const pred = dot(X, beta);
       const residual = pred - y;
       mse += Math.pow(residual, 2);
@@ -70,19 +77,20 @@ function dateToDecimalDate(date) {
 function makeRegression(dates) {
   // This converts dates to decimal dates and those into a harmonic regression of the first order
   // with cos and sin over a year
-  const harmonicOrder = 1;
   let n = dates.length;
-  let XSin = new Float32Array(n);
-  let XCos = new Float32Array(n);
+  var X = new Array(n);
   for (let i = 0; i < n; i++) {
+  	let Xi = new Float32Array(HARMONICS*2+1);
+    Xi[0] = 1;
     let decimalDate = dateToDecimalDate(dates[i]);
-    let Xharmon = 2 * Math.PI * decimalDate * harmonicOrder;
-    XSin[i] = Math.sin(Xharmon);
-    XCos[i] = Math.cos(Xharmon);
+    for (let harmonic = 1; harmonic <= HARMONICS; harmonic++) {
+      let Xharmon = 2 * Math.PI * decimalDate * harmonic;
+      Xi[harmonic * 2 - 1] = Math.sin(Xharmon);
+      Xi[harmonic * 2] = Math.cos(Xharmon);
+    }
+    X[i] = Xi
   }
-  let intersect = new Uint8Array(n);
-  for (let i = 0; i < n; ++i) intersect[i] = 1;
-  return [intersect, XSin, XCos];
+  return X;
 }
 
 function dot(A, B) {

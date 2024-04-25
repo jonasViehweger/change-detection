@@ -1,8 +1,10 @@
+const HARMONICS = 2;
+
 function setup() {
   return {
     input: ["SR3", "SR4", "dataMask"],
     output: {
-      bands: 5,
+      bands: HARMONICS*2+1,
       sampleType: "FLOAT32",
     },
     mosaicking: "ORBIT",
@@ -19,7 +21,7 @@ function preProcessScenes(collections) {
   return collections;
 }
 
-function evaluatePixel(samples, scene) {
+function evaluatePixel(samples) {
   if (samples.length == 0) {
     return [NaN, NaN, NaN];
   }
@@ -37,18 +39,8 @@ function evaluatePixel(samples, scene) {
   if (y.length == 0) {
     return [NaN, NaN, NaN];
   }
-  // const clear = samples.map((sample) => isClear(sample));
-  // const clearTs = samples.filter((item, i) => clear[i]);
-  // if (clearTs.length == 0) {
-  //   return [NaN, NaN, NaN];
-  // }
-  // let X = [];
-  // for (let i = 0; i < fullX.length; i++) {
-  //   let clearX = fullX[i].filter((item, i) => clear[i]);
-  //   X[i] = clearX;
-  // }
-  // const y = clearTs.map((sample) => calcNDVI(sample));
   const beta = lstsq(X, y);
+  throw new Error(JSON.stringify(beta))
   return beta;
 }
 
@@ -73,22 +65,21 @@ function dateToDecimalDate(date) {
 function makeRegression(dates) {
   // This converts dates to decimal dates and those into a harmonic regression of the first order
   // with cos and sin over a year
-  const harmonics = 2;
   let n = dates.length;
-  var X = new Array(1 + harmonics * 2);
-  X[1] = new Float32Array(n);
-  X[2] = new Float32Array(n);
-  X[3] = new Float32Array(n);
-  X[4] = new Float32Array(n);
+  var X = new Array(1 + HARMONICS * 2);
+  X[1] = new Array(n);
+  X[2] = new Array(n);
+  X[3] = new Array(n);
+  X[4] = new Array(n);
   for (let j = 0; j < n; j++) {
     let decimalDate = dateToDecimalDate(dates[j]);
-    for (let harmonic = 1; harmonic <= harmonics; harmonic++) {
+    for (let harmonic = 1; harmonic <= HARMONICS; harmonic++) {
       let Xharmon = 2 * Math.PI * decimalDate * harmonic;
-      X[harmonic * 2][j] = Math.sin(Xharmon);
-      X[harmonic * 2 + 1][j] = Math.cos(Xharmon);
+      X[harmonic * 2 - 1][j] = Math.sin(Xharmon);
+      X[harmonic * 2][j] = Math.cos(Xharmon);
     }
   }
-  let intersect = new Uint8Array(n);
+  let intersect = new Array(n);
   for (let i = 0; i < n; ++i) intersect[i] = 1;
   X[0] = intersect;
   return X;
