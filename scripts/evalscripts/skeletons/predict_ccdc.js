@@ -2,7 +2,7 @@ import makeRegression from '../utils/makeRegression';
 import dot from '../utils/dot';
 
 const HARMONICS = 2;
-const SENSITIVITY = 5;
+const SENSITIVITY = 10;
 const BOUND = 5;
 var bands = new Array(HARMONICS*2+3);
 for (let i=0; i<HARMONICS*2+1; i++){
