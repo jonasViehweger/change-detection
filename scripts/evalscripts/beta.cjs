@@ -133,7 +133,7 @@ function setup() {
   return {
     input: ["SR3", "SR4", "dataMask"],
     output: {
-      bands: HARMONICS*2+1,
+      bands: HARMONICS * 2 + 1,
       sampleType: "FLOAT32",
     },
     mosaicking: "ORBIT",
@@ -156,12 +156,12 @@ function evaluatePixel(samples) {
   }
   let y = [];
   let X = [];
-  const N = HARMONICS*2+1;
+  const N = HARMONICS * 2 + 1;
   for (let i = 0; i < N; i++) X[i] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
     if (sample.dataMask == 1) {
-      y.push((sample.SR4-sample.SR3)/(sample.SR4+sample.SR3));
+      y.push((sample.SR4 - sample.SR3) / (sample.SR4 + sample.SR3));
       for (let j = 0; j < N; j++) {
         X[j].push(fullX[i][j]);
       }
@@ -173,6 +173,8 @@ function evaluatePixel(samples) {
   const beta = lstsq(X, y);
   return beta;
 }
+
+// DISCARD FROM HERE
 
 exports.setup = setup;
 exports.preProcessScenes = preProcessScenes;
