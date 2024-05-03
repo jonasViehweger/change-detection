@@ -1,16 +1,17 @@
-from contextlib import suppress
 import json
+from contextlib import suppress
 
 import boto3
 import s3fs
 import xarray as xr
 
-class Storage():
+
+class Storage:
     def __init__(self, name, bucket_name):
         self.name = name
         self.bucket_name = bucket_name
 
-    def create(self, models, metrics):
+    def create(self):
         boto3.setup_default_session(profile_name="default")
         s3_client = boto3.client("s3", region_name="eu-central-1")
         location = {"LocationConstraint": "eu-central-1"}
@@ -53,6 +54,3 @@ class Storage():
         reordered_indexes = {index_name: metrics_ds.indexes[index_name] for index_name in order}
         metrics_ds = metrics_ds.rename({col: "metric" + col[-1] for col in metrics_ds})
         metrics_ds.to_zarr(store_out, mode="a")
-
-    
-
