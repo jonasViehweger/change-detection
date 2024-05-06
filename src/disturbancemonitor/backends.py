@@ -1,6 +1,7 @@
 import json
 import os
 from contextlib import suppress
+from time import sleep
 
 import boto3
 import s3fs
@@ -21,10 +22,20 @@ class BackendInterface:
 
 
 class AWSBackend(BackendInterface):
-    def __init__(self, name, bucket_name):
+    def __init__(
+        self, name, bucket_name, geometry, resolution, datasource, harmonics, inputs, metric, sensitivity, boundary
+    ):
         self.name = name
         self.zarr_name = name + ".zarr"
         self.bucket_name = bucket_name
+        self.geometry = geometry
+        self.resolution = resolution
+        self.datasource = datasource
+        self.harmonics = harmonics
+        self.inputs = inputs
+        self.metric = metric
+        self.sensitivity = sensitivity
+        self.boundary = boundary
         self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
         self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
         self.timeout = 0
@@ -35,6 +46,7 @@ class AWSBackend(BackendInterface):
             self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
 
     def create_dataset(self):
+        print("Setting up bucket")
         boto3.setup_default_session(profile_name="default")
         s3_client = boto3.client("s3", region_name="eu-central-1")
         location = {"LocationConstraint": "eu-central-1"}
@@ -61,25 +73,33 @@ class AWSBackend(BackendInterface):
         # Set the new policy
         s3_client.put_bucket_policy(Bucket=self.bucket_name, Policy=bucket_policy)
 
-    def write_dataset(self, models, metrics):
-        with MemoryFile(models).open() as dataset:
+    def write_models(self, binary):
+        with MemoryFile(binary).open() as dataset:
             beta_ds = xr.open_dataset(dataset, band_as_variable=True, engine="rasterio")
         order = ["y", "x"]
         reordered_indexes = {index_name: beta_ds.indexes[index_name] for index_name in order}
         beta_ds = beta_ds.reindex(reordered_indexes)
         beta_ds = beta_ds.rename({col: "c" + col[-1] for col in beta_ds})
         beta_ds["process"] = xr.zeros_like(beta_ds["c1"])
+        beta_ds["metric1"] = xr.zeros_like(beta_ds["c1"])
+
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
         store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         beta_ds.to_zarr(store_out, mode="a")
 
-        with MemoryFile(metrics).open() as dataset:
+    def write_metric(self, binary):
+        with MemoryFile(binary).open() as dataset:
             metrics_ds = xr.open_dataset(dataset, band_as_variable=True, engine="rasterio")
         order = ["y", "x"]
         reordered_indexes = {index_name: metrics_ds.indexes[index_name] for index_name in order}
         metrics_ds = metrics_ds.rename({col: "metric" + col[-1] for col in metrics_ds})
+        metrics_ds = metrics_ds.reindex(reordered_indexes)
+
+        s3_out = s3fs.S3FileSystem(anon=False, profile="default")
+        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         metrics_ds.to_zarr(store_out, mode="a")
 
+    def ingest_dataset(self):
         # Make new Zarr storage on SH
         zarr_api = "https://services.sentinel-hub.com/api/v1/zarr/collections"
         zarr_data = {
@@ -92,13 +112,31 @@ class AWSBackend(BackendInterface):
         zarr_byoc.raise_for_status()
         self.zarr_id = zarr_byoc.json()["data"]["id"]
 
+        print("Waiting for collection to finish ingestion")
+        # wait for zarr collection to fully ingest
+        while True:
+            sleep(5)
+            zarr_coll = self.client.get(f"{zarr_api}/{self.zarr_id}").json()
+            if zarr_coll["data"]["status"] == "INGESTED":
+                break
+        print("Ingested")
+
     def init_model(self):
+        print("0/5 Initializing model")
+        print("1/5 Fitting model")
         models = self.compute_models()
+        print("2/5 Writing model to bucket")
+        self.write_models(models)
+        print("3/5 Ingesting model to SH")
+        self.ingest_dataset()
+
+        print("4/5 Computing metric")
         metrics = self.compute_metric()
-        return models, metrics
+        print("5/5 Writing metric to bucket")
+        self.write_metric(metrics)
 
     def compute_models(self):
-        with open("../evalscripts/beta.cjs", "r") as src:
+        with open("./evalscripts/beta.cjs", "r") as src:
             beta_evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
 
         beta_data = [
@@ -118,7 +156,7 @@ class AWSBackend(BackendInterface):
         return beta.content
 
     def compute_metric(self):
-        with open("../evalscripts/rmse.cjs", "r") as src:
+        with open("./evalscripts/rmse.cjs", "r") as src:
             sigma_evalscript = src.read()
 
         sigma_data = [
@@ -144,15 +182,12 @@ class AWSBackend(BackendInterface):
         return sigma.content
 
     def base_request(self, data: list, evalscript: str):
-        res = 5  # meters
-
-        aoi = [696920, 4528660, 700140, 4532020]
-        crs = "http://www.opengis.net/def/crs/EPSG/0/32614"
+        crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
         return {
-            "input": {"bounds": {"bbox": aoi, "properties": {"crs": crs}}, "data": data},
+            "input": {"bounds": {"geometry": self.geometry, "properties": {"crs": crs}}, "data": data},
             "output": {
-                "resx": res,
-                "resy": res,
+                "resx": self.resolution,
+                "resy": self.resolution,
                 "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}],
             },
             "evalscript": evalscript,

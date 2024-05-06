@@ -1,3 +1,14 @@
+[project]
+name = "disturbancemonitor"
+version = "0.0.0"
+dependencies = [
+  "boto3",
+  "s3fs",
+  "xarray",
+  "rioxarray",
+  "authlib"
+]
+
 [tool.black]
 line-length = 120
 preview = true
