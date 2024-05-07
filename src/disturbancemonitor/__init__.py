@@ -2,6 +2,7 @@ import configparser
 import json
 import os
 from contextlib import suppress
+from pathlib import Path
 
 from . import backends
 
@@ -26,22 +27,24 @@ class DisturbanceMonitor:
         )
         backend.create_dataset()
         backend.init_model()
+        self.name = name
         self.monitoring_start = monitoring_start
         self.STATUS = "INITIALIZED"
         self.backend = backend
 
     def dump(self):
         config = configparser.ConfigParser()
-        config["DEFAULT"] = {"ServerAliveInterval": "45", "Compression": "yes", "CompressionLevel": "9"}
-        config["forge.example"] = {}
-        config["forge.example"]["User"] = "hg"
-        config["topsecret.server.example"] = {}
-        topsecret = config["topsecret.server.example"]
-        topsecret["Port"] = "50022"  # mutates the parser
-        topsecret["ForwardX11"] = "no"  # same here
-        config["DEFAULT"]["ForwardX11"] = "yes"
-        with open("example.ini", "w") as configfile:
+        backend_dict = self.backend.as_dict()
+        config[self.name] = {k: v for k, v in self.__dict__.items() if k not in ["backend", "name"]}
+        config[self.name + ".backend"] = {k: v for k, v in backend_dict.items() if k not in ["geometry"]}
+        out_path = Path().home() / ".config" / "disturbancemonitor"
+        geom_out = out_path / "geoms"
+        out_path.mkdir(parents=True, exist_ok=True)
+        geom_out.mkdir(parents=True, exist_ok=True)
+        with open(out_path / "config.ini", "w") as configfile:
             config.write(configfile)
+        with open(geom_out / (self.name + ".geojson")) as fs:
+            json.dump(backend_dict["geometry"], fs)
 
     def monitor(self):
         self.storage.get()

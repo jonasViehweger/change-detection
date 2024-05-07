@@ -38,8 +38,10 @@ class AWSBackend(BackendInterface):
         self.boundary = boundary
         self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
         self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
-        self.timeout = 0
         self.process_api = "https://services.sentinel-hub.com/api/v1/process"
+
+    def as_dict(self):
+        return {k: v for k, v in self.__dict__.items() if k not in ["client", "process_api"]}
 
     def get_token(self):
         if self.client.token.is_expired():
