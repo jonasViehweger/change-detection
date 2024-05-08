@@ -23,7 +23,19 @@ class BackendInterface:
 
 class AWSBackend(BackendInterface):
     def __init__(
-        self, name, bucket_name, geometry, resolution, datasource, harmonics, inputs, metric, sensitivity, boundary
+        self,
+        name,
+        bucket_name,
+        geometry,
+        resolution,
+        datasource,
+        harmonics,
+        inputs,
+        metric,
+        sensitivity,
+        boundary,
+        zarr_id=None,
+        **kwargs,
     ):
         self.name = name
         self.zarr_name = name + ".zarr"
@@ -36,12 +48,13 @@ class AWSBackend(BackendInterface):
         self.metric = metric
         self.sensitivity = sensitivity
         self.boundary = boundary
+        self.zarr_id = zarr_id
         self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
         self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
         self.process_api = "https://services.sentinel-hub.com/api/v1/process"
 
     def as_dict(self):
-        return {k: v for k, v in self.__dict__.items() if k not in ["client", "process_api"]}
+        return {k: v for k, v in self.__dict__.items() if k not in ["client", "process_api", "zarr_name"]}
 
     def get_token(self):
         if self.client.token.is_expired():

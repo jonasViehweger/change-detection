@@ -6,7 +6,8 @@ dependencies = [
   "s3fs",
   "xarray",
   "rioxarray",
-  "authlib"
+  "authlib",
+  "toml"
 ]
 
 [tool.black]
