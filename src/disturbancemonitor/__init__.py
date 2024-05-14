@@ -2,51 +2,44 @@ import configparser
 import json
 import os
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 
 import toml
 
-from . import backends
+from .backends import ProcessAPI
 
 
-class DisturbanceMonitor:
+@dataclass
+class MonitorParameters:
+    monitoring_start: str
+    geometry: dict
+    resolution: tuple
+    datasource: str
+    harmonics: int = 2
+    inputs: list = ["NDVI"]
+    metric: str = "RMSE"
+    sensitivity: int = 5
+    boundary: int = 5
+
+
+class Monitor:
     def __init__(
         self,
         name,
-        bucket_name,
-        monitoring_start,
-        geometry,
-        resolution,
-        datasource,
-        harmonics=2,
-        inputs=["NDVI"],
-        metric="RMSE",
-        sensitivity=5,
-        boundary=5,
+        monitor,
+        backend="ProcessAPI",
         status=None,
-        backend="AWS",
         **kwargs,
     ):
-        if backend == "AWS":
-            self.backend = backends.AWSBackend(
-                name,
-                bucket_name,
-                geometry,
-                resolution,
-                datasource,
-                harmonics,
-                inputs,
-                metric,
-                sensitivity,
-                boundary,
-                **kwargs,
-            )
+        self.name = name
+        backends = {"ProcessAPI": ProcessAPI}
+        self.backend = backends[backend](name, monitor, **kwargs)
         if status != "INITIALIZED":
             self.backend.create_dataset()
             self.backend.init_model()
             self.status = "INITIALIZED"
-        self.name = name
-        self.monitoring_start = monitoring_start
+        self.backend = backend
 
     @classmethod
     def load(cls, name):
@@ -100,3 +93,9 @@ class DisturbanceMonitor:
 
     # inspect
     # point
+
+
+def DisturbanceMonitor(self, species, sub_species, length, weight, is_salt_water=False):
+    mapper = {True: backends.ProcessAPI}
+    monitor = Monitor(species, sub_species, length, weight)
+    return mapper[is_salt_water](monitor)

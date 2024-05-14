@@ -1,5 +1,7 @@
 import json
 import os
+import random
+import string
 from contextlib import suppress
 from time import sleep
 
@@ -10,44 +12,20 @@ from authlib.integrations.requests_client import OAuth2Session
 from rasterio.io import MemoryFile
 
 
-class BackendInterface:
-    def __init__(self):
-        pass
-
-    def create_dataset(self, models, metrics):
-        raise NotImplementedError("Subclasses must implement create method")
-
-    def write_dataset(self, models, metrics):
-        raise NotImplementedError("Subclasses must implement write_dataset method")
-
-
-class AWSBackend(BackendInterface):
+class ProcessAPI:
     def __init__(
         self,
         name,
-        bucket_name,
-        geometry,
-        resolution,
-        datasource,
-        harmonics,
-        inputs,
-        metric,
-        sensitivity,
-        boundary,
+        monitor,
         zarr_id=None,
+        bucket_name=None,
         **kwargs,
     ):
+        self.random_id = "".join(random.choices(string.ascii_letters + string.digits, k=8))
         self.name = name
+        self.bucket_name = bucket_name or name + self.random_id
+        self.monitor = monitor
         self.zarr_name = name + ".zarr"
-        self.bucket_name = bucket_name
-        self.geometry = geometry
-        self.resolution = resolution
-        self.datasource = datasource
-        self.harmonics = harmonics
-        self.inputs = inputs
-        self.metric = metric
-        self.sensitivity = sensitivity
-        self.boundary = boundary
         self.zarr_id = zarr_id
         self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
         self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
@@ -77,7 +55,10 @@ class AWSBackend(BackendInterface):
                     "Effect": "Allow",
                     "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
                     "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
-                    "Resource": [f"arn:aws:s3:::{self.bucket_name}", f"arn:aws:s3:::{self.bucket_name}/*"],
+                    "Resource": [
+                        f"arn:aws:s3:::{self.monitor.bucket_name}",
+                        f"arn:aws:s3:::{self.monitor.bucket_name}/*",
+                    ],
                 }
             ],
         }
@@ -86,7 +67,7 @@ class AWSBackend(BackendInterface):
         bucket_policy = json.dumps(bucket_policy)
 
         # Set the new policy
-        s3_client.put_bucket_policy(Bucket=self.bucket_name, Policy=bucket_policy)
+        s3_client.put_bucket_policy(Bucket=self.monitor.bucket_name, Policy=bucket_policy)
 
     def write_models(self, binary):
         with MemoryFile(binary).open() as dataset:
@@ -99,7 +80,7 @@ class AWSBackend(BackendInterface):
         beta_ds["metric1"] = xr.zeros_like(beta_ds["c1"])
 
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
-        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
+        store_out = s3fs.S3Map(root=f"s3://{self.monitor.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         beta_ds.to_zarr(store_out, mode="a")
 
     def write_metric(self, binary):
@@ -111,7 +92,7 @@ class AWSBackend(BackendInterface):
         metrics_ds = metrics_ds.reindex(reordered_indexes)
 
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
-        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
+        store_out = s3fs.S3Map(root=f"s3://{self.monitor.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         metrics_ds.to_zarr(store_out, mode="a")
 
     def ingest_dataset(self):
@@ -119,7 +100,7 @@ class AWSBackend(BackendInterface):
         zarr_api = "https://services.sentinel-hub.com/api/v1/zarr/collections"
         zarr_data = {
             "name": self.name,
-            "s3Bucket": self.bucket_name,
+            "s3Bucket": self.monitor.bucket_name,
             "path": f"{self.zarr_name}/",
             "crs": "http://www.opengis.net/def/crs/EPSG/0/4326",
         }
@@ -199,10 +180,10 @@ class AWSBackend(BackendInterface):
     def base_request(self, data: list, evalscript: str):
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
         return {
-            "input": {"bounds": {"geometry": self.geometry, "properties": {"crs": crs}}, "data": data},
+            "input": {"bounds": {"geometry": self.monitor.geometry, "properties": {"crs": crs}}, "data": data},
             "output": {
-                "resx": self.resolution,
-                "resy": self.resolution,
+                "resx": self.monitor.resolution,
+                "resy": self.monitor.resolution,
                 "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}],
             },
             "evalscript": evalscript,
