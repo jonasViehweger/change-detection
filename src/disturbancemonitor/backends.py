@@ -3,43 +3,90 @@ import os
 import random
 import string
 from contextlib import suppress
+from copy import copy
+from dataclasses import asdict
+from pathlib import Path
 from time import sleep
 
 import boto3
 import s3fs
+import toml
 import xarray as xr
 from authlib.integrations.requests_client import OAuth2Session
 from rasterio.io import MemoryFile
 
+CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
-class ProcessAPI:
+
+class Backend:
+    def __init__(self, monitor_params):
+        self.monitor_params = monitor_params
+        pass
+
+    def init_model(self):
+        raise NotImplementedError
+
+    def as_dict(self):
+        raise NotImplementedError
+
+    def dump(self):
+        geom_out = CONFIG_PATH / "geoms"
+        CONFIG_PATH.mkdir(parents=True, exist_ok=True)
+        geom_out.mkdir(parents=True, exist_ok=True)
+        toml_path = CONFIG_PATH / "config.toml"
+
+        # Get the saved toml if it already exists:
+        if (toml_path).exists():
+            with open(toml_path, "r") as configfile:
+                config = toml.load(configfile)
+        else:
+            config = {}
+
+        backend_dict = self.as_dict()
+        params_dict = asdict(self.monitor_params)
+        name = params_dict.pop("name")
+        geometry = params_dict.pop("geometry")
+
+        config.update(
+            {
+                name: params_dict,
+                f"{name}.{type(self).__name__}": backend_dict,
+            }
+        )
+        with open(CONFIG_PATH / "config.toml", "w") as configfile:
+            toml.dump(config, configfile)
+        with open(geom_out / (name + ".geojson"), "w") as fs:
+            json.dump(geometry, fs)
+
+
+class ProcessAPI(Backend):
     def __init__(
         self,
-        name,
-        monitor,
+        monitor_params,
         zarr_id=None,
         bucket_name=None,
         **kwargs,
     ):
         self.random_id = "".join(random.choices(string.ascii_letters + string.digits, k=8))
-        self.name = name
-        self.bucket_name = bucket_name or name + self.random_id
-        self.monitor = monitor
-        self.zarr_name = name + ".zarr"
+        self.bucket_name = (bucket_name or monitor_params.name + "-" + self.random_id).lower()
+        self.zarr_name = monitor_params.name + ".zarr"
         self.zarr_id = zarr_id
         self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
         self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
         self.process_api = "https://services.sentinel-hub.com/api/v1/process"
+        super().__init__(monitor_params)
 
     def as_dict(self):
-        return {k: v for k, v in self.__dict__.items() if k not in ["client", "process_api", "zarr_name"]}
+        subset_dict = {
+            k: v for k, v in self.__dict__.items() if k not in ["client", "process_api", "zarr_name", "monitor_params"]
+        }
+        return copy(subset_dict)
 
     def get_token(self):
         if self.client.token.is_expired():
             self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
 
-    def create_dataset(self):
-        print("Setting up bucket")
+    def create_bucket(self):
         boto3.setup_default_session(profile_name="default")
         s3_client = boto3.client("s3", region_name="eu-central-1")
         location = {"LocationConstraint": "eu-central-1"}
@@ -56,8 +103,8 @@ class ProcessAPI:
                     "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
                     "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
                     "Resource": [
-                        f"arn:aws:s3:::{self.monitor.bucket_name}",
-                        f"arn:aws:s3:::{self.monitor.bucket_name}/*",
+                        f"arn:aws:s3:::{self.bucket_name}",
+                        f"arn:aws:s3:::{self.bucket_name}/*",
                     ],
                 }
             ],
@@ -67,7 +114,7 @@ class ProcessAPI:
         bucket_policy = json.dumps(bucket_policy)
 
         # Set the new policy
-        s3_client.put_bucket_policy(Bucket=self.monitor.bucket_name, Policy=bucket_policy)
+        s3_client.put_bucket_policy(Bucket=self.bucket_name, Policy=bucket_policy)
 
     def write_models(self, binary):
         with MemoryFile(binary).open() as dataset:
@@ -80,7 +127,7 @@ class ProcessAPI:
         beta_ds["metric1"] = xr.zeros_like(beta_ds["c1"])
 
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
-        store_out = s3fs.S3Map(root=f"s3://{self.monitor.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
+        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         beta_ds.to_zarr(store_out, mode="a")
 
     def write_metric(self, binary):
@@ -92,15 +139,15 @@ class ProcessAPI:
         metrics_ds = metrics_ds.reindex(reordered_indexes)
 
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
-        store_out = s3fs.S3Map(root=f"s3://{self.monitor.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
+        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         metrics_ds.to_zarr(store_out, mode="a")
 
     def ingest_dataset(self):
         # Make new Zarr storage on SH
         zarr_api = "https://services.sentinel-hub.com/api/v1/zarr/collections"
         zarr_data = {
-            "name": self.name,
-            "s3Bucket": self.monitor.bucket_name,
+            "name": self.monitor_params.name,
+            "s3Bucket": self.bucket_name,
             "path": f"{self.zarr_name}/",
             "crs": "http://www.opengis.net/def/crs/EPSG/0/4326",
         }
@@ -118,18 +165,20 @@ class ProcessAPI:
         print("Ingested")
 
     def init_model(self):
-        print("0/5 Initializing model")
-        print("1/5 Fitting model")
+        print("0/6 Initializing model")
+        print("1/6 Creating bucket")
+        self.create_bucket()
+        print("2/6 Fitting model")
         models = self.compute_models()
-        print("2/5 Writing model to bucket")
+        print("3/6 Writing model to bucket")
         self.write_models(models)
-        print("3/5 Ingesting model to SH")
+        print("4/6 Ingesting model to SH")
         self.ingest_dataset()
-
-        print("4/5 Computing metric")
+        print("5/6 Computing metric")
         metrics = self.compute_metric()
-        print("5/5 Writing metric to bucket")
+        print("6/6 Writing metric to bucket")
         self.write_metric(metrics)
+        self.monitor_params.state = "INITIALIZED"
 
     def compute_models(self):
         with open("./evalscripts/beta.cjs", "r") as src:
@@ -138,7 +187,7 @@ class ProcessAPI:
         beta_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2022-01-01T00:00:00Z"},
+                    "timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2021-02-01T00:00:00Z"},
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
@@ -158,14 +207,14 @@ class ProcessAPI:
         sigma_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2022-01-01T00:00:00Z"},
+                    "timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2021-02-01T00:00:00Z"},
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
                 "id": "ARPS",
             },
             {
-                "dataFilter": {"timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2022-01-01T00:00:00Z"}},
+                "dataFilter": {"timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2021-02-01T00:00:00Z"}},
                 "type": f"zarr-{self.zarr_id}",
                 "id": "beta",
             },
@@ -180,10 +229,10 @@ class ProcessAPI:
     def base_request(self, data: list, evalscript: str):
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
         return {
-            "input": {"bounds": {"geometry": self.monitor.geometry, "properties": {"crs": crs}}, "data": data},
+            "input": {"bounds": {"geometry": self.monitor_params.geometry, "properties": {"crs": crs}}, "data": data},
             "output": {
-                "resx": self.monitor.resolution,
-                "resy": self.monitor.resolution,
+                "resx": self.monitor_params.resolution,
+                "resy": self.monitor_params.resolution,
                 "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}],
             },
             "evalscript": evalscript,
