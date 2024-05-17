@@ -1,3 +1,4 @@
+import datetime
 import json
 from dataclasses import dataclass, field
 
@@ -12,7 +13,7 @@ BACKENDS = {
 
 def start_monitor(
     name: str,
-    monitoring_start: str,
+    monitoring_start: datetime.date,
     geometry: dict,
     resolution: float = 0.001,
     datasource: str = "ARPS",
@@ -26,17 +27,17 @@ def start_monitor(
     **kwargs,
 ):
     params = MonitorParameters(
-        name,
-        monitoring_start,
-        geometry,
-        resolution,
-        datasource,
-        harmonics,
-        inputs,
-        metric,
-        sensitivity,
-        boundary,
-        state,
+        name=name,
+        monitoring_start=monitoring_start,
+        geometry=geometry,
+        resolution=resolution,
+        datasource=datasource,
+        harmonics=harmonics,
+        inputs=inputs,
+        metric=metric,
+        sensitivity=sensitivity,
+        boundary=boundary,
+        state=state,
     )
     Backend = BACKENDS[backend]
     backend = Backend(params, **kwargs)
@@ -58,7 +59,7 @@ def load_monitor(name, backend="ProcessAPI"):
 @dataclass
 class MonitorParameters:
     name: str
-    monitoring_start: str
+    monitoring_start: datetime.date
     geometry: dict
     resolution: tuple
     datasource: str
@@ -68,10 +69,15 @@ class MonitorParameters:
     sensitivity: int = 5
     boundary: int = 5
     state: str = "NOT_INITIALIZED"
+    last_monitored: datetime.date = None
 
-    @classmethod
-    def from_config(cls, name):
-        pass
+    def __post_init__(self):
+        if self.last_monitored is None:
+            self.last_monitored = self.monitoring_start
+
+    @property
+    def fit_start(self) -> datetime.date:
+        return self.monitoring_start - datetime.timedelta(days=365)
 
 
 class Monitor:

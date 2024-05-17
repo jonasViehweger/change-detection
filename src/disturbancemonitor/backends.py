@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import random
@@ -24,6 +25,12 @@ class Backend:
         pass
 
     def init_model(self):
+        raise NotImplementedError
+
+    def monitor(self, end_date=datetime.date.today()):
+        """
+        Will automatically monitor from `last_monitored` to `end_date`
+        """
         raise NotImplementedError
 
     def as_dict(self):
@@ -125,6 +132,7 @@ class ProcessAPI(Backend):
         beta_ds = beta_ds.rename({col: "c" + col[-1] for col in beta_ds})
         beta_ds["process"] = xr.zeros_like(beta_ds["c1"])
         beta_ds["metric1"] = xr.zeros_like(beta_ds["c1"])
+        beta_ds["disturbedDate"] = xr.zeros_like(beta_ds["c1"])
 
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
         store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
@@ -136,6 +144,19 @@ class ProcessAPI(Backend):
         order = ["y", "x"]
         reordered_indexes = {index_name: metrics_ds.indexes[index_name] for index_name in order}
         metrics_ds = metrics_ds.rename({col: "metric" + col[-1] for col in metrics_ds})
+        metrics_ds = metrics_ds.reindex(reordered_indexes)
+
+        s3_out = s3fs.S3FileSystem(anon=False, profile="default")
+        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
+        metrics_ds.to_zarr(store_out, mode="a")
+
+    def write_monitor(self, binary):
+        with MemoryFile(binary).open() as dataset:
+            metrics_ds = xr.open_dataset(dataset, band_as_variable=True, engine="rasterio")
+        order = ["y", "x"]
+        reordered_indexes = {index_name: metrics_ds.indexes[index_name] for index_name in order}
+        rename = ["disturbedDate", "process"]
+        metrics_ds = metrics_ds.rename({col: new_name for col, new_name in zip(metrics_ds, rename)})
         metrics_ds = metrics_ds.reindex(reordered_indexes)
 
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
@@ -187,7 +208,10 @@ class ProcessAPI(Backend):
         beta_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2021-02-01T00:00:00Z"},
+                    "timeRange": {
+                        "from": f"{self.monitor_params.fit_start.isoformat()}T00:00:00Z",
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
+                    },
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
@@ -207,14 +231,22 @@ class ProcessAPI(Backend):
         sigma_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2021-02-01T00:00:00Z"},
+                    "timeRange": {
+                        "from": f"{self.monitor_params.fit_start.isoformat()}T00:00:00Z",
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
+                    },
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
                 "id": "ARPS",
             },
             {
-                "dataFilter": {"timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2021-02-01T00:00:00Z"}},
+                "dataFilter": {
+                    "timeRange": {
+                        "from": f"{self.monitor_params.fit_start.isoformat()}T00:00:00Z",
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
+                    }
+                },
                 "type": f"zarr-{self.zarr_id}",
                 "id": "beta",
             },
@@ -237,3 +269,33 @@ class ProcessAPI(Backend):
             },
             "evalscript": evalscript,
         }
+
+    def monitor(self, end: datetime.date = datetime.date.today()):
+        start = self.monitor_params.last_monitored
+
+        with open("./evalscripts/predict_ccdc.cjs", "r") as src:
+            monitor_evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
+
+        monitor_data = [
+            {
+                "dataFilter": {
+                    "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
+                    "mosaickingOrder": "leastRecent",
+                },
+                "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
+                "id": "ARPS",
+            },
+            {
+                "dataFilter": {"timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2022-01-01T00:00:00Z"}},
+                "type": f"zarr-{self.zarr_id}",
+                "id": "beta",
+            },
+        ]
+
+        monitor_request = self.base_request(monitor_data, monitor_evalscript)
+        monitor_data = self.client.post(self.process_api, json=monitor_request)
+        monitor_data.raise_for_status()
+
+        self.write_monitor(monitor_data.content)
+        self.monitor_params.last_monitored = end
+        self.dump()

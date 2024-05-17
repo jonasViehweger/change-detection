@@ -9,7 +9,7 @@ for (let i = 0; i < HARMONICS * 2 + 1; i++) {
   bands[i] = "c" + (i + 1);
 }
 bands[bands.length - 2] = "process";
-bands[bands.length - 1] = "rmse";
+bands[bands.length - 1] = "metric1";
 
 function setup() {
   return {
@@ -21,10 +21,13 @@ function setup() {
         mosaicking: "ORBIT",
       },
     ],
-    output: {
-      bands: 1,
-      sampleType: "UINT16",
-    },
+    output: [
+      {
+        id: "default",
+        bands: 2,
+        sampleType: "FLOAT32",
+      },
+    ],
   };
 }
 
@@ -40,11 +43,10 @@ function preProcessScenes(collections) {
 
 function evaluatePixel(samples, scenes) {
   if (samples.ARPS.length == 0) {
-    return [0];
+    return [0, 0];
   }
-  const startDate = new Date(scenes.ARPS.scenes.orbits[0].dateFrom);
-  var process = 0;
   const b = samples.beta[0];
+  var process = b.process;
   var beta = new Array(HARMONICS * 2 + 1);
   for (let i = 0; i < beta.length; i++) {
     beta[i] = b["c" + (i + 1)];
@@ -55,23 +57,19 @@ function evaluatePixel(samples, scenes) {
       const y = (sample.SR4 - sample.SR3) / (sample.SR4 + sample.SR3);
       const X = fullX[i];
       const pred = dot(X, beta);
-      process = updateProcessCCDC(pred, y, process, b.rmse);
+      process = updateProcessCCDC(pred, y, process, b.metric1);
       if (process >= BOUND) {
-        return [
-          dateDiffInDays(
-            startDate,
-            new Date(scenes.ARPS.scenes.orbits[i].dateFrom)
-          ),
-        ];
+        var disturbedDate = dateToInt(scenes.ARPS.scenes.orbits[i].dateFrom);
+        break;
       }
     }
   }
-  return [0];
+  return [disturbedDate, process];
 }
 
-function dateDiffInDays(a, b) {
-  const _MS_PER_DAY = 1000 * 60 * 60 * 24;
-  return Math.floor((b - a) / _MS_PER_DAY);
+function dateToInt(datetimestring) {
+  // Converts an ISO datetime string to an int with format YYYYMMDD
+  return parseInt(datetimestring.split("T")[0].split("-").join(""));
 }
 
 function updateProcessCCDC(pred, actual, process, rmse = 1) {
