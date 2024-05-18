@@ -9,7 +9,7 @@ from pathlib import Path
 
 import toml
 
-from .resources import S3, ZarrSH, SHClient
+from .resources import S3, ZarrSH, SHClient, ResourceManager
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
@@ -94,20 +94,23 @@ class ProcessAPI(Backend):
         return copy(subset_dict)
 
     def init_model(self):
-        print("0/6 Initializing model")
-        print("1/6 Creating bucket")
-        self.s3.create_bucket()
-        print("2/6 Fitting model")
-        models = self.compute_models()
-        print("3/6 Writing model to bucket")
-        self.s3.write_models(models)
-        print("4/6 Ingesting model to SH")
-        self.zarr_id = self.zarr.ingest_dataset()
-        print("5/6 Computing metric")
-        metrics = self.compute_metric()
-        print("6/6 Writing metric to bucket")
-        self.s3.write_metric(metrics)
-        self.monitor_params.state = "INITIALIZED"
+        with ResourceManager() as manager:
+            print("0/6 Initializing model")
+            print("1/6 Creating bucket")
+            self.s3.create_bucket()
+            manager.add_resource(self.s3)
+            print("2/6 Fitting model")
+            models = self.compute_models()
+            print("3/6 Writing model to bucket")
+            self.s3.write_models(models)
+            print("4/6 Ingesting model to SH")
+            self.zarr_id = self.zarr.ingest_dataset()
+            manager.add_resource(self.zarr)
+            print("5/6 Computing metric")
+            metrics = self.compute_metric()
+            print("6/6 Writing metric to bucket")
+            self.s3.write_metric(metrics)
+            self.monitor_params.state = "INITIALIZED"
 
     def compute_models(self):
         with open("./evalscripts/beta.cjs", "r") as src:

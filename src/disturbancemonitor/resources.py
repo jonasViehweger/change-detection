@@ -10,6 +10,23 @@ from rasterio.io import MemoryFile
 
 from authlib.integrations.requests_client import OAuth2Session
 
+class ResourceManager:
+    def __init__(self):
+        self.resources = []
+    
+    def add_resource(self, resource):
+        self.resources.append(resource)
+    
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            print(f"Exception occurred: {exc_val}. \nRolling back resources.")
+            for resource in reversed(self.resources):
+                resource.delete()
+        return False  # Propagate the exception
+
 class S3:
     def __init__(self, bucket_name, zarr_name, profile="default"):
         self.bucket_name = bucket_name
@@ -118,14 +135,14 @@ class ZarrSH:
         zarr_byoc.raise_for_status()
         self.zarr_id = zarr_byoc.json()["data"]["id"]
 
-        print("Waiting for collection to finish ingestion")
+        print("... Waiting for collection to finish ingestion")
         # wait for zarr collection to fully ingest
         while True:
             sleep(5)
             zarr_coll = self.client.get(f"{self.zarr_api}/{self.zarr_id}").json()
             if zarr_coll["data"]["status"] == "INGESTED":
                 break
-        print("Ingested")
+        print("... Ingested")
         return self.zarr_id
     
     def delete(self):
