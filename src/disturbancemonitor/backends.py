@@ -3,18 +3,13 @@ import json
 import os
 import random
 import string
-from contextlib import suppress
 from copy import copy
 from dataclasses import asdict
 from pathlib import Path
-from time import sleep
 
-import boto3
-import s3fs
 import toml
-import xarray as xr
-from authlib.integrations.requests_client import OAuth2Session
-from rasterio.io import MemoryFile
+
+from .resources import S3, ZarrSH, SHClient
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
@@ -65,6 +60,12 @@ class Backend:
         with open(geom_out / (name + ".geojson"), "w") as fs:
             json.dump(geometry, fs)
 
+    def delete(self):
+        """
+        Deletes all resources that were created by the monitor
+        """
+        pass
+
 
 class ProcessAPI(Backend):
     def __init__(
@@ -78,127 +79,34 @@ class ProcessAPI(Backend):
         self.bucket_name = (bucket_name or monitor_params.name + "-" + self.random_id).lower()
         self.zarr_name = monitor_params.name + ".zarr"
         self.zarr_id = zarr_id
-        self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
-        self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
+        self.client = SHClient()
+        self.s3 = S3(self.bucket_name, self.zarr_name)
+        self.zarr = ZarrSH(self.zarr_name, self.bucket_name, self.client, self.zarr_id)
+
         self.process_api = "https://services.sentinel-hub.com/api/v1/process"
         super().__init__(monitor_params)
 
     def as_dict(self):
         subset_dict = {
-            k: v for k, v in self.__dict__.items() if k not in ["client", "process_api", "zarr_name", "monitor_params"]
+            k: v for k, v in self.__dict__.items() 
+            if k not in ["client", "process_api", "zarr_name", "monitor_params", "zarr", "s3"]
         }
         return copy(subset_dict)
-
-    def get_token(self):
-        if self.client.token.is_expired():
-            self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
-
-    def create_bucket(self):
-        boto3.setup_default_session(profile_name="default")
-        s3_client = boto3.client("s3", region_name="eu-central-1")
-        location = {"LocationConstraint": "eu-central-1"}
-        with suppress(s3_client.exceptions.BucketAlreadyOwnedByYou):
-            s3_client.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=location)
-
-        # Set SH BYOC bucket policy
-        bucket_policy = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "Sentinel Hub permissions",
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                    "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
-                    "Resource": [
-                        f"arn:aws:s3:::{self.bucket_name}",
-                        f"arn:aws:s3:::{self.bucket_name}/*",
-                    ],
-                }
-            ],
-        }
-
-        # Convert the policy from JSON dict to string
-        bucket_policy = json.dumps(bucket_policy)
-
-        # Set the new policy
-        s3_client.put_bucket_policy(Bucket=self.bucket_name, Policy=bucket_policy)
-
-    def write_models(self, binary):
-        with MemoryFile(binary).open() as dataset:
-            beta_ds = xr.open_dataset(dataset, band_as_variable=True, engine="rasterio")
-        order = ["y", "x"]
-        reordered_indexes = {index_name: beta_ds.indexes[index_name] for index_name in order}
-        beta_ds = beta_ds.reindex(reordered_indexes)
-        beta_ds = beta_ds.rename({col: "c" + col[-1] for col in beta_ds})
-        beta_ds["process"] = xr.zeros_like(beta_ds["c1"])
-        beta_ds["metric1"] = xr.zeros_like(beta_ds["c1"])
-        beta_ds["disturbedDate"] = xr.zeros_like(beta_ds["c1"])
-
-        s3_out = s3fs.S3FileSystem(anon=False, profile="default")
-        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
-        beta_ds.to_zarr(store_out, mode="a")
-
-    def write_metric(self, binary):
-        with MemoryFile(binary).open() as dataset:
-            metrics_ds = xr.open_dataset(dataset, band_as_variable=True, engine="rasterio")
-        order = ["y", "x"]
-        reordered_indexes = {index_name: metrics_ds.indexes[index_name] for index_name in order}
-        metrics_ds = metrics_ds.rename({col: "metric" + col[-1] for col in metrics_ds})
-        metrics_ds = metrics_ds.reindex(reordered_indexes)
-
-        s3_out = s3fs.S3FileSystem(anon=False, profile="default")
-        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
-        metrics_ds.to_zarr(store_out, mode="a")
-
-    def write_monitor(self, binary):
-        with MemoryFile(binary).open() as dataset:
-            metrics_ds = xr.open_dataset(dataset, band_as_variable=True, engine="rasterio")
-        order = ["y", "x"]
-        reordered_indexes = {index_name: metrics_ds.indexes[index_name] for index_name in order}
-        rename = ["disturbedDate", "process"]
-        metrics_ds = metrics_ds.rename({col: new_name for col, new_name in zip(metrics_ds, rename)})
-        metrics_ds = metrics_ds.reindex(reordered_indexes)
-
-        s3_out = s3fs.S3FileSystem(anon=False, profile="default")
-        store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
-        metrics_ds.to_zarr(store_out, mode="a")
-
-    def ingest_dataset(self):
-        # Make new Zarr storage on SH
-        zarr_api = "https://services.sentinel-hub.com/api/v1/zarr/collections"
-        zarr_data = {
-            "name": self.monitor_params.name,
-            "s3Bucket": self.bucket_name,
-            "path": f"{self.zarr_name}/",
-            "crs": "http://www.opengis.net/def/crs/EPSG/0/4326",
-        }
-        zarr_byoc = self.client.post(zarr_api, json=zarr_data)
-        zarr_byoc.raise_for_status()
-        self.zarr_id = zarr_byoc.json()["data"]["id"]
-
-        print("Waiting for collection to finish ingestion")
-        # wait for zarr collection to fully ingest
-        while True:
-            sleep(5)
-            zarr_coll = self.client.get(f"{zarr_api}/{self.zarr_id}").json()
-            if zarr_coll["data"]["status"] == "INGESTED":
-                break
-        print("Ingested")
 
     def init_model(self):
         print("0/6 Initializing model")
         print("1/6 Creating bucket")
-        self.create_bucket()
+        self.s3.create_bucket()
         print("2/6 Fitting model")
         models = self.compute_models()
         print("3/6 Writing model to bucket")
-        self.write_models(models)
+        self.s3.write_models(models)
         print("4/6 Ingesting model to SH")
-        self.ingest_dataset()
+        self.zarr_id = self.zarr.ingest_dataset()
         print("5/6 Computing metric")
         metrics = self.compute_metric()
         print("6/6 Writing metric to bucket")
-        self.write_metric(metrics)
+        self.s3.write_metric(metrics)
         self.monitor_params.state = "INITIALIZED"
 
     def compute_models(self):
@@ -255,7 +163,11 @@ class ProcessAPI(Backend):
         sigma_request = self.base_request(sigma_data, sigma_evalscript)
 
         sigma = self.client.post("https://services.sentinel-hub.com/api/v1/process", json=sigma_request)
-        sigma.raise_for_status()
+        try:
+            sigma.raise_for_status()
+        except:
+            print(sigma.text)
+            raise
         return sigma.content
 
     def base_request(self, data: list, evalscript: str):
@@ -296,6 +208,15 @@ class ProcessAPI(Backend):
         monitor_data = self.client.post(self.process_api, json=monitor_request)
         monitor_data.raise_for_status()
 
-        self.write_monitor(monitor_data.content)
+        self.s3.write_monitor(monitor_data.content)
         self.monitor_params.last_monitored = end
+        self.dump()
+
+    def delete(self):
+        """
+        Deletes the S3 Folder for the monitor and the SH Zarr collection
+        """
+        self.s3.delete()
+        self.zarr.delete()
+        self.monitor_params.state = "DELETED"
         self.dump()
