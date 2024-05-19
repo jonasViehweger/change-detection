@@ -35,30 +35,13 @@ class S3:
         boto3.setup_default_session(profile_name=profile)
         self.s3 = boto3.client("s3", region_name="eu-central-1")
 
-    def create_bucket(self):
+    def create_bucket(self, policy):
         location = {"LocationConstraint": "eu-central-1"}
         with suppress(self.s3.exceptions.BucketAlreadyOwnedByYou):
             self.s3.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=location)
 
-        # Set SH BYOC bucket policy
-        bucket_policy = {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "Sentinel Hub permissions",
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                    "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
-                    "Resource": [
-                        f"arn:aws:s3:::{self.bucket_name}",
-                        f"arn:aws:s3:::{self.bucket_name}/*",
-                    ],
-                }
-            ],
-        }
-
         # Convert the policy from JSON dict to string
-        bucket_policy = json.dumps(bucket_policy)
+        bucket_policy = json.dumps(policy)
 
         # Set the new policy
         self.s3.put_bucket_policy(Bucket=self.bucket_name, Policy=bucket_policy)
@@ -113,6 +96,7 @@ class S3:
             self.s3_out.delete(f"s3://{self.bucket_name}/{self.zarr_name}", recursive=True)
         except FileNotFoundError:
             pass
+        # self.s3.delete_bucket({self.bucket_name})
 
 
 class ZarrSH:

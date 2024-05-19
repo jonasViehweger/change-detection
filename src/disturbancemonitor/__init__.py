@@ -4,10 +4,11 @@ from dataclasses import dataclass, field
 
 import toml
 
-from .backends import CONFIG_PATH, ProcessAPI
+from .backends import CONFIG_PATH, ProcessAPI, AsyncAPI
 
 BACKENDS = {
     "ProcessAPI": ProcessAPI,
+    "AsyncAPI": AsyncAPI
 }
 
 
@@ -53,7 +54,7 @@ def load_monitor(name, backend="ProcessAPI"):
         config = toml.load(configfile)
     with open(geom_out / (name + ".geojson")) as fs:
         geometry = json.load(fs)
-    return start_monitor(geometry=geometry, name=name, **config[f"{name}"], **config[f"{name}.{backend}"])
+    return start_monitor(geometry=geometry, name=name, backend=backend, **config[f"{name}"], **config[f"{name}.{backend}"])
 
 
 @dataclass
