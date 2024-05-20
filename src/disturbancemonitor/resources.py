@@ -2,6 +2,8 @@ from contextlib import suppress
 import os
 import json
 from time import sleep
+from io import BytesIO
+from functools import wraps
 
 import boto3
 import s3fs
@@ -9,6 +11,7 @@ import xarray as xr
 from rasterio.io import MemoryFile
 
 from authlib.integrations.requests_client import OAuth2Session
+from requests.exceptions import HTTPError
 
 class ResourceManager:
     def __init__(self):
@@ -24,8 +27,21 @@ class ResourceManager:
         if exc_type:
             print(f"Exception occurred: {exc_val}. \nRolling back resources.")
             for resource in reversed(self.resources):
+                # pass
                 resource.delete()
         return False  # Propagate the exception
+    
+def add_failure_message(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            response = func(*args, **kwargs)
+            response.raise_for_status()
+            return response
+        except HTTPError as e:
+            print(f"Request failed: {e.response.status_code} - {e.response.text}")
+            raise
+    return wrapper
 
 class S3:
     def __init__(self, bucket_name, zarr_name, profile="default"):
@@ -90,14 +106,67 @@ class S3:
         store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         metrics_ds.to_zarr(store_out, mode="a")
     
+    def write_binary(self, filename: str, binary: BytesIO):
+        with self.s3_out.open(filename, "wb") as f:
+            f.write(binary.getvalue())
+    
     def delete(self):
         """This is supposed to just delete the folder which was created, but not the bucket"""
         try:
             self.s3_out.delete(f"s3://{self.bucket_name}/{self.zarr_name}", recursive=True)
         except FileNotFoundError:
             pass
-        # self.s3.delete_bucket({self.bucket_name})
+        self.s3.delete_bucket(Bucket=self.bucket_name)
 
+
+class BYOC:
+    def __init__(self, bucket_name, folder_name, sh_client, byoc_id=None) -> None:
+        self.folder_name = folder_name
+        self.bucket_name = bucket_name
+        self.client = sh_client
+        self.byoc_id = byoc_id
+        self.url = "https://services.sentinel-hub.com/api/v1/byoc/collections"
+
+    def create_byoc(self):
+        new_collection = {
+            "name": self.bucket_name,
+            "s3Bucket": self.bucket_name
+        }
+        byoc = self.client.post(self.url, json=new_collection)
+        byoc.raise_for_status()
+        self.byoc_id = byoc.json()["data"]["id"]
+        return self.byoc_id
+
+    def ingest_tile(self, sensing_time):
+        tile_json = {
+            "path": f"{self.folder_name}/(BAND).tif",
+            "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z"
+        }
+        try:
+            tile_request = self.client.post(f"{self.url}/{self.byoc_id}/tiles", json=tile_json)
+            tile_request.raise_for_status()
+        except HTTPError as e:
+            print(f"Request failed: {e.response.status_code} - {e.response.text}")
+            raise
+        tile_id = tile_request.json()["data"]["id"]
+
+        print("... Waiting for collection to finish ingestion")
+        # wait for zarr collection to fully ingest
+        while True:
+            sleep(5)
+            tile = self.client.get(f"{self.url}/{self.byoc_id}/tiles/{tile_id}").json()
+            status = tile["data"]["status"]
+            if status == "INGESTED":
+                break
+            elif status == "FAILED":
+                raise RuntimeError(f'Ingestion of tile failed: {tile["data"]["additionalData"]["failedIngestionCause"]}')
+        print("... Ingested")
+        return self.byoc_id
+    
+    def delete(self):
+        """Delete the BYOC Collection"""
+        delete = self.client.delete(f"{self.url}/{self.byoc_id}")
+        delete.raise_for_status()
 
 class ZarrSH:
     def __init__(self, zarr_name, bucket_name, sh_client, zarr_id=None) -> None:
@@ -133,7 +202,6 @@ class ZarrSH:
         """Delete the Zarr Collection"""
         delete = self.client.delete(f"{self.zarr_api}/{self.zarr_id}")
         delete.raise_for_status()
-
 
 class SHClient:
     def __init__(self, profile="default-profile"):

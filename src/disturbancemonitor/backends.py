@@ -9,8 +9,11 @@ from pathlib import Path
 from time import sleep
 
 import toml
+import rasterio
+from io import BytesIO
+import numpy as np
 
-from .resources import S3, ZarrSH, SHClient, ResourceManager
+from .resources import S3, ZarrSH, SHClient, ResourceManager, BYOC
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
@@ -246,12 +249,15 @@ class AsyncAPI(Backend):
         monitor_params,
         bucket_name=None,
         folder_name=None,
+        byoc_id=None,
         **kwargs,
     ):
-        self.random_id = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+        self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
         self.folder_name = folder_name or (monitor_params.name + "-" + self.random_id).lower()
         self.client = SHClient()
+        self.byoc_id = byoc_id
+        self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
         self.s3 = S3(self.bucket_name, self.folder_name)
 
         self.url = "https://services.sentinel-hub.com/api/v1/async/process"
@@ -272,6 +278,16 @@ class AsyncAPI(Backend):
             "Version": "2012-10-17",
             "Statement": [
                 {
+                    "Sid": "Sentinel Hub permissions",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
+                    "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
+                    "Resource": [
+                        f"arn:aws:s3:::{self.bucket_name}",
+                        f"arn:aws:s3:::{self.bucket_name}/*",
+                    ],
+                },
+                {
                     "Sid": "Async Permissions",
                     "Effect": "Allow",
                     "Principal": {
@@ -284,31 +300,22 @@ class AsyncAPI(Backend):
                     "Resource": [
                         f"arn:aws:s3:::{self.bucket_name}/*"
                     ]
-                },
-                {
-                    "Sid": "Sentinel Hub permissions",
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                    "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
-                    "Resource": [
-                        f"arn:aws:s3:::{self.bucket_name}",
-                        f"arn:aws:s3:::{self.bucket_name}/*",
-                    ],
                 }
             ]
             })
             manager.add_resource(self.s3)
             print("2/6 Fitting model")
-            self.async_id =  self.compute_models()
+            async_id =  self.compute_models()
             print("3/6 Writing model to bucket")
-            #self.s3.write_models(models)
+            self.write_models(async_id)
             print("4/6 Ingesting model to SH")
-            #self.zarr_id = self.zarr.ingest_dataset()
-            #manager.add_resource(self.zarr)
+            self.byoc_id = self.byoc.create_byoc()
+            manager.add_resource(self.byoc)
+            self.byoc_id = self.byoc.ingest_tile(self.monitor_params.monitoring_start)
             print("5/6 Computing metric")
-            #metrics = self.compute_metric()
+            async_id = self.compute_metric()
             print("6/6 Writing metric to bucket")
-            #self.s3.write_metric(metrics)
+            self.write_metric(async_id)
             self.monitor_params.state = "INITIALIZED"
 
     def wait_for_async(self, async_id):
@@ -319,7 +326,69 @@ class AsyncAPI(Backend):
             if response.status_code == 404:
                 # request will be 404 when process finished
                 break
+                # see if an error was made:
+        try:
+            with self.s3.s3_out.open(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}/error.json") as fs:
+                error = json.load(fs)
+                raise RuntimeError(f"Async request failed: {error['message']}")
+        except FileNotFoundError:
+            pass
+
         print("... Finished")
+
+    def write_metric(self, async_id):
+        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
+        async_out = f"{s3_root}/{async_id}/default.tif"
+        with rasterio.open(async_out, profile="default") as src:
+            profile = src.profile
+            profile.update(
+                driver="COG",
+                compress="DEFLATE",
+                blockxsize=1024,
+                blockysize=1024,
+                tiled=True
+            )
+            with BytesIO() as out:
+                # Create a new file to write to
+                with rasterio.open(out, "w", **profile) as dst:
+                    dst.write(src.read())
+                self.s3.write_binary(f"{s3_root}/metric.tif", out)
+        
+        # delete non-cog async output 
+        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
+
+
+    def write_models(self, async_id):
+        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
+        async_out = f"{s3_root}/{async_id}/default.tif"
+        with rasterio.open(async_out, profile="default") as src:
+            profile = src.profile
+            profile.update(
+                driver="COG",
+                compress="DEFLATE",
+                blockxsize=1024,
+                blockysize=1024,
+                tiled=True
+            )
+            with BytesIO() as out:
+                # Create a new file to write to
+                with rasterio.open(out, "w", **profile) as dst:
+                    dst.write(src.read())
+                self.s3.write_binary(f"{s3_root}/c.tif", out)
+
+            # Init all other necessary files (files have only 1 band, init with 0)
+            profile.update(count=1)
+            zero_raster = np.zeros((profile["height"], profile["width"]), dtype=np.float32)
+            with BytesIO() as out:
+                with rasterio.open(out, "w", **profile) as dst:
+                    dst.write(zero_raster, 1)
+                self.s3.write_binary(f"{s3_root}/metric.tif", out)
+                self.s3.write_binary(f"{s3_root}/disturbedDate.tif", out)
+                self.s3.write_binary(f"{s3_root}/process.tif", out)
+
+        # delete non-cog async output
+        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
+
 
     def compute_models(self):
         with open("./evalscripts/beta.cjs", "r") as src:
@@ -340,7 +409,6 @@ class AsyncAPI(Backend):
 
         beta_request = self.base_request(beta_data, beta_evalscript)
         beta = self.client.post(self.url, json=beta_request)
-
         beta.raise_for_status()
         async_id = beta.json()["id"]
         self.wait_for_async(async_id)
@@ -366,10 +434,10 @@ class AsyncAPI(Backend):
                 "dataFilter": {
                     "timeRange": {
                         "from": f"{self.monitor_params.fit_start.isoformat()}T00:00:00Z",
-                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z",
                     }
                 },
-                "type": f"zarr-{self.zarr_id}",
+                "type": f"byoc-{self.byoc_id}",
                 "id": "beta",
             },
         ]
@@ -378,7 +446,9 @@ class AsyncAPI(Backend):
 
         sigma = self.client.post(self.url, json=sigma_request)
         sigma.raise_for_status()
-        return sigma.content
+        async_id = sigma.json()["id"]
+        self.wait_for_async(async_id)
+        return async_id
 
     def base_request(self, data: list, evalscript: str):
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
@@ -416,7 +486,7 @@ class AsyncAPI(Backend):
             },
             {
                 "dataFilter": {"timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2022-01-01T00:00:00Z"}},
-                "type": f"zarr-{self.zarr_id}",
+                "type": f"byoc-{self.byoc-id}",
                 "id": "beta",
             },
         ]
