@@ -1,36 +1,39 @@
-from contextlib import suppress
-import os
 import json
-from time import sleep
-from io import BytesIO
+import os
+from contextlib import suppress
 from functools import wraps
+from io import BytesIO
+from time import sleep
 
 import boto3
+import boto3.session
 import s3fs
 import xarray as xr
-from rasterio.io import MemoryFile
-
 from authlib.integrations.requests_client import OAuth2Session
+from rasterio.io import MemoryFile
 from requests.exceptions import HTTPError
 
+
 class ResourceManager:
-    def __init__(self):
+    def __init__(self, rollback=True):
         self.resources = []
-    
+        self.rollback = rollback
+
     def add_resource(self, resource):
         self.resources.append(resource)
-    
+
     def __enter__(self):
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
             print(f"Exception occurred: {exc_val}. \nRolling back resources.")
             for resource in reversed(self.resources):
-                # pass
-                resource.delete()
+                if self.rollback:
+                    resource.delete()
         return False  # Propagate the exception
-    
+
+
 def add_failure_message(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
@@ -41,15 +44,17 @@ def add_failure_message(func):
         except HTTPError as e:
             print(f"Request failed: {e.response.status_code} - {e.response.text}")
             raise
+
     return wrapper
+
 
 class S3:
     def __init__(self, bucket_name, zarr_name, profile="default"):
         self.bucket_name = bucket_name
         self.zarr_name = zarr_name
         self.s3_out = s3fs.S3FileSystem(anon=False, profile=profile)
-        boto3.setup_default_session(profile_name=profile)
-        self.s3 = boto3.client("s3", region_name="eu-central-1")
+        self.session = boto3.session.Session(profile_name=profile)
+        self.s3 = self.session.client("s3", region_name="eu-central-1")
 
     def create_bucket(self, policy):
         location = {"LocationConstraint": "eu-central-1"}
@@ -105,11 +110,11 @@ class S3:
         s3_out = s3fs.S3FileSystem(anon=False, profile="default")
         store_out = s3fs.S3Map(root=f"s3://{self.bucket_name}/{self.zarr_name}", s3=s3_out, check=False)
         metrics_ds.to_zarr(store_out, mode="a")
-    
+
     def write_binary(self, filename: str, binary: BytesIO):
         with self.s3_out.open(filename, "wb") as f:
             f.write(binary.getvalue())
-    
+
     def delete(self):
         """This is supposed to just delete the folder which was created, but not the bucket"""
         try:
@@ -128,20 +133,14 @@ class BYOC:
         self.url = "https://services.sentinel-hub.com/api/v1/byoc/collections"
 
     def create_byoc(self):
-        new_collection = {
-            "name": self.bucket_name,
-            "s3Bucket": self.bucket_name
-        }
+        new_collection = {"name": self.bucket_name, "s3Bucket": self.bucket_name}
         byoc = self.client.post(self.url, json=new_collection)
         byoc.raise_for_status()
         self.byoc_id = byoc.json()["data"]["id"]
         return self.byoc_id
 
     def ingest_tile(self, sensing_time):
-        tile_json = {
-            "path": f"{self.folder_name}/(BAND).tif",
-            "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z"
-        }
+        tile_json = {"path": f"{self.folder_name}/(BAND).tif", "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z"}
         try:
             tile_request = self.client.post(f"{self.url}/{self.byoc_id}/tiles", json=tile_json)
             tile_request.raise_for_status()
@@ -159,14 +158,17 @@ class BYOC:
             if status == "INGESTED":
                 break
             elif status == "FAILED":
-                raise RuntimeError(f'Ingestion of tile failed: {tile["data"]["additionalData"]["failedIngestionCause"]}')
+                raise RuntimeError(
+                    f'Ingestion of tile failed: {tile["data"]["additionalData"]["failedIngestionCause"]}'
+                )
         print("... Ingested")
         return self.byoc_id
-    
+
     def delete(self):
         """Delete the BYOC Collection"""
         delete = self.client.delete(f"{self.url}/{self.byoc_id}")
         delete.raise_for_status()
+
 
 class ZarrSH:
     def __init__(self, zarr_name, bucket_name, sh_client, zarr_id=None) -> None:
@@ -197,11 +199,12 @@ class ZarrSH:
                 break
         print("... Ingested")
         return self.zarr_id
-    
+
     def delete(self):
         """Delete the Zarr Collection"""
         delete = self.client.delete(f"{self.zarr_api}/{self.zarr_id}")
         delete.raise_for_status()
+
 
 class SHClient:
     def __init__(self, profile="default-profile"):
@@ -220,7 +223,7 @@ class SHClient:
     def delete(self, *args, **kwargs):
         self.get_token()
         return self.client.delete(*args, **kwargs)
-    
+
     def get(self, *args, **kwargs):
         self.get_token()
         return self.client.get(*args, **kwargs)

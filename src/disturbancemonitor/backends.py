@@ -1,19 +1,19 @@
 import datetime
 import json
-import os
 import random
 import string
 from copy import copy
 from dataclasses import asdict
+from io import BytesIO
 from pathlib import Path
 from time import sleep
 
-import toml
-import rasterio
-from io import BytesIO
 import numpy as np
+import rasterio
+import toml
+from rasterio.session import AWSSession
 
-from .resources import S3, ZarrSH, SHClient, ResourceManager, BYOC
+from .resources import BYOC, S3, ResourceManager, SHClient, ZarrSH
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
@@ -77,6 +77,7 @@ class ProcessAPI(Backend):
         monitor_params,
         zarr_id=None,
         bucket_name=None,
+        rollback=True,
         **kwargs,
     ):
         self.random_id = "".join(random.choices(string.ascii_letters + string.digits, k=8))
@@ -86,36 +87,40 @@ class ProcessAPI(Backend):
         self.client = SHClient()
         self.s3 = S3(self.bucket_name, self.zarr_name)
         self.zarr = ZarrSH(self.zarr_name, self.bucket_name, self.client, self.zarr_id)
+        self.rollback = rollback
 
         self.url = "https://services.sentinel-hub.com/api/v1/process"
         super().__init__(monitor_params)
 
     def as_dict(self):
         subset_dict = {
-            k: v for k, v in self.__dict__.items() 
+            k: v
+            for k, v in self.__dict__.items()
             if k not in ["client", "url", "zarr_name", "monitor_params", "zarr", "s3"]
         }
         return copy(subset_dict)
 
     def init_model(self):
-        with ResourceManager() as manager:
+        with ResourceManager(rollback=self.rollback) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
-            self.s3.create_bucket(policy={
-                "Version": "2012-10-17",
-                "Statement": [
-                    {
-                        "Sid": "Sentinel Hub permissions",
-                        "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                        "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
-                        "Resource": [
-                            f"arn:aws:s3:::{self.bucket_name}",
-                            f"arn:aws:s3:::{self.bucket_name}/*",
-                        ],
-                    }
-                ],
-            })
+            self.s3.create_bucket(
+                policy={
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "Sentinel Hub permissions",
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
+                            "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
+                            "Resource": [
+                                f"arn:aws:s3:::{self.bucket_name}",
+                                f"arn:aws:s3:::{self.bucket_name}/*",
+                            ],
+                        }
+                    ],
+                }
+            )
             manager.add_resource(self.s3)
             print("2/6 Fitting model")
             models = self.compute_models()
@@ -250,6 +255,7 @@ class AsyncAPI(Backend):
         bucket_name=None,
         folder_name=None,
         byoc_id=None,
+        rollback=True,
         **kwargs,
     ):
         self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
@@ -259,53 +265,52 @@ class AsyncAPI(Backend):
         self.byoc_id = byoc_id
         self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
         self.s3 = S3(self.bucket_name, self.folder_name)
+        self.rollback = rollback
 
         self.url = "https://services.sentinel-hub.com/api/v1/async/process"
         super().__init__(monitor_params)
 
     def as_dict(self):
         subset_dict = {
-            k: v for k, v in self.__dict__.items() 
+            k: v
+            for k, v in self.__dict__.items()
             if k not in ["client", "url", "zarr_name", "monitor_params", "zarr", "s3"]
         }
         return copy(subset_dict)
 
     def init_model(self):
-        with ResourceManager() as manager:
+        with ResourceManager(
+            rollback=self.rollback,
+        ) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
-            self.s3.create_bucket(policy={
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "Sentinel Hub permissions",
-                    "Effect": "Allow",
-                    "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                    "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
-                    "Resource": [
-                        f"arn:aws:s3:::{self.bucket_name}",
-                        f"arn:aws:s3:::{self.bucket_name}/*",
+            self.s3.create_bucket(
+                policy={
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Sid": "Sentinel Hub permissions",
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
+                            "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
+                            "Resource": [
+                                f"arn:aws:s3:::{self.bucket_name}",
+                                f"arn:aws:s3:::{self.bucket_name}/*",
+                            ],
+                        },
+                        {
+                            "Sid": "Async Permissions",
+                            "Effect": "Allow",
+                            "Principal": {"AWS": "arn:aws:iam::450268950967:user/jonas"},
+                            "Action": ["s3:GetObject", "s3:PutObject"],
+                            "Resource": [f"arn:aws:s3:::{self.bucket_name}/*"],
+                        },
                     ],
-                },
-                {
-                    "Sid": "Async Permissions",
-                    "Effect": "Allow",
-                    "Principal": {
-                        "AWS": "arn:aws:iam::450268950967:user/jonas"
-                    },
-                    "Action": [
-                        "s3:GetObject",
-                        "s3:PutObject"
-                    ],
-                    "Resource": [
-                        f"arn:aws:s3:::{self.bucket_name}/*"
-                    ]
                 }
-            ]
-            })
+            )
             manager.add_resource(self.s3)
             print("2/6 Fitting model")
-            async_id =  self.compute_models()
+            async_id = self.compute_models()
             print("3/6 Writing model to bucket")
             self.write_models(async_id)
             print("4/6 Ingesting model to SH")
@@ -339,56 +344,44 @@ class AsyncAPI(Backend):
     def write_metric(self, async_id):
         s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
         async_out = f"{s3_root}/{async_id}/default.tif"
-        with rasterio.open(async_out, profile="default") as src:
-            profile = src.profile
-            profile.update(
-                driver="COG",
-                compress="DEFLATE",
-                blockxsize=1024,
-                blockysize=1024,
-                tiled=True
-            )
-            with BytesIO() as out:
-                # Create a new file to write to
-                with rasterio.open(out, "w", **profile) as dst:
-                    dst.write(src.read())
-                self.s3.write_binary(f"{s3_root}/metric.tif", out)
-        
-        # delete non-cog async output 
-        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
-
-
-    def write_models(self, async_id):
-        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
-        async_out = f"{s3_root}/{async_id}/default.tif"
-        with rasterio.open(async_out, profile="default") as src:
-            profile = src.profile
-            profile.update(
-                driver="COG",
-                compress="DEFLATE",
-                blockxsize=1024,
-                blockysize=1024,
-                tiled=True
-            )
-            with BytesIO() as out:
-                # Create a new file to write to
-                with rasterio.open(out, "w", **profile) as dst:
-                    dst.write(src.read())
-                self.s3.write_binary(f"{s3_root}/c.tif", out)
-
-            # Init all other necessary files (files have only 1 band, init with 0)
-            profile.update(count=1)
-            zero_raster = np.zeros((profile["height"], profile["width"]), dtype=np.float32)
-            with BytesIO() as out:
-                with rasterio.open(out, "w", **profile) as dst:
-                    dst.write(zero_raster, 1)
-                self.s3.write_binary(f"{s3_root}/metric.tif", out)
-                self.s3.write_binary(f"{s3_root}/disturbedDate.tif", out)
-                self.s3.write_binary(f"{s3_root}/process.tif", out)
+        with rasterio.Env(AWSSession(session=self.s3.session)):
+            with rasterio.open(async_out) as src:
+                profile = src.profile
+                profile.update(driver="COG", compress="DEFLATE", blockxsize=1024, blockysize=1024, tiled=True)
+                with BytesIO() as out:
+                    # Create a new file to write to
+                    with rasterio.open(out, "w", **profile) as dst:
+                        dst.write(src.read())
+                    self.s3.write_binary(f"{s3_root}/metric.tif", out)
 
         # delete non-cog async output
         self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
 
+    def write_models(self, async_id):
+        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
+        async_out = f"{s3_root}/{async_id}/default.tif"
+        with rasterio.Env(AWSSession(session=self.s3.session)):
+            with rasterio.open(async_out) as src:
+                profile = src.profile
+                profile.update(driver="COG", compress="DEFLATE", blockxsize=1024, blockysize=1024, tiled=True)
+                with BytesIO() as out:
+                    # Create a new file to write to
+                    with rasterio.open(out, "w", **profile) as dst:
+                        dst.write(src.read())
+                    self.s3.write_binary(f"{s3_root}/c.tif", out)
+
+                # Init all other necessary files (files have only 1 band, init with 0)
+                profile.update(count=1)
+                zero_raster = np.zeros((profile["height"], profile["width"]), dtype=np.float32)
+                with BytesIO() as out:
+                    with rasterio.open(out, "w", **profile) as dst:
+                        dst.write(zero_raster, 1)
+                    self.s3.write_binary(f"{s3_root}/metric.tif", out)
+                    self.s3.write_binary(f"{s3_root}/disturbedDate.tif", out)
+                    self.s3.write_binary(f"{s3_root}/process.tif", out)
+
+        # delete non-cog async output
+        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
 
     def compute_models(self):
         with open("./evalscripts/beta.cjs", "r") as src:
@@ -458,13 +451,13 @@ class AsyncAPI(Backend):
                 "resx": self.monitor_params.resolution,
                 "resy": self.monitor_params.resolution,
                 "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}],
-                "delivery" : {
-                    "s3" : {
+                "delivery": {
+                    "s3": {
                         "url": f"s3://{self.bucket_name}/{self.folder_name}",
                         "accessKey": "AKIAWRVQ66G363FBBOML",
-                        "secretAccessKey": "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"
+                        "secretAccessKey": "Y52mTsiQdUBmzkOcM2uXB5LmE/kRA8RgVBHbhEaY",
                     }
-                }
+                },
             },
             "evalscript": evalscript,
         }
