@@ -1,11 +1,14 @@
 import makeRegression from "../utils/makeRegression";
 import lstsq from "../utils/lstsq";
+import { dataSources } from "../utils/datasources";
 
 const HARMONICS = 2;
+const DATASOURCE = "S2L2A";
+const INPUT = "NDVI"
 
 function setup() {
   return {
-    input: ["SR3", "SR4", "dataMask"],
+    input: dataSources[DATASOURCE].validBands.concat(dataSources[DATASOURCE].inputs[INPUT].bands),
     output: {
       bands: HARMONICS * 2 + 1,
       sampleType: "FLOAT32",
@@ -34,8 +37,8 @@ function evaluatePixel(samples) {
   for (let i = 0; i < N; i++) X[i] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
-    if (sample.dataMask == 1) {
-      y.push((sample.SR4 - sample.SR3) / (sample.SR4 + sample.SR3));
+    if (dataSources[DATASOURCE].validate(sample)) {
+      y.push(dataSources[DATASOURCE].inputs[INPUT].calculate(sample));
       for (let j = 0; j < N; j++) {
         X[j].push(fullX[i][j]);
       }
