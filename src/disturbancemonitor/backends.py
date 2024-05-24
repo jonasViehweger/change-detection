@@ -498,4 +498,5 @@ class AsyncAPI(Backend):
         """
         self.s3.delete()
         self.monitor_params.state = "DELETED"
+        self.byoc.delete()
         self.dump()

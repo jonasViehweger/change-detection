@@ -127,11 +127,54 @@ function inv(_A) {
     return _A;
 }
 
+var dataSources = {
+    ARPS: {
+        validBands: ["dataMask"],
+        validate: function (sample) {
+            return sample.dataMask;
+        },
+        inputs: {
+            NDVI: {
+                bands: ["SR3", "SR4"],
+                calculate: function (sample) {
+                    return (sample.SR4 - sample.SR3) / (sample.SR4 + sample.SR3);
+                }
+            }
+        }
+    },
+    S2L2A: {
+        validBands: ["dataMask", "SCL"],
+        validate: function (sample) {
+            // Define codes as invalid:
+            const invalid = [
+                0, // NO_DATA
+                1, // SATURATED_DEFECTIVE
+                3, // CLOUD_SHADOW
+                7, // CLOUD_LOW_PROBA
+                8, // CLOUD_MEDIUM_PROBA
+                9, // CLOUD_HIGH_PROBA
+                10 // THIN_CIRRUS
+            ];
+            return !invalid.includes(sample.SCL) && sample.dataMask
+        },
+        inputs: {
+            NDVI: {
+                bands: ["B04", "B08"],
+                calculate: function (sample) {
+                    return (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+                }
+            }
+        }
+    }
+};
+
 const HARMONICS = 2;
+const DATASOURCE = "S2L2A";
+const INPUT = "NDVI";
 
 function setup() {
   return {
-    input: ["SR3", "SR4", "dataMask"],
+    input: dataSources[DATASOURCE].validBands.concat(dataSources[DATASOURCE].inputs[INPUT].bands),
     output: {
       bands: HARMONICS * 2 + 1,
       sampleType: "FLOAT32",
@@ -160,8 +203,8 @@ function evaluatePixel(samples) {
   for (let i = 0; i < N; i++) X[i] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
-    if (sample.dataMask == 1) {
-      y.push((sample.SR4 - sample.SR3) / (sample.SR4 + sample.SR3));
+    if (dataSources[DATASOURCE].validate(sample)) {
+      y.push(dataSources[DATASOURCE].inputs[INPUT].calculate(sample));
       for (let j = 0; j < N; j++) {
         X[j].push(fullX[i][j]);
       }

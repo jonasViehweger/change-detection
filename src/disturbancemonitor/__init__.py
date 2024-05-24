@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 import toml
 
-from .backends import CONFIG_PATH, ProcessAPI, AsyncAPI
+from .backends import CONFIG_PATH, AsyncAPI, ProcessAPI
 
 BACKENDS = {
     "ProcessAPI": ProcessAPI,

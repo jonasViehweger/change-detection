@@ -1,7 +1,12 @@
 import makeRegression from "../utils/makeRegression";
 import dot from "../utils/dot";
+import { dataSources } from "../utils/datasources";
+
 
 const HARMONICS = 2;
+const DATASOURCE = "S2L2A";
+const INPUT = "NDVI"
+
 var bands = new Array(HARMONICS * 2 + 2);
 for (let i = 0; i < HARMONICS * 2 + 1; i++) {
   bands[i] = "c_" + (i + 1);
@@ -17,8 +22,8 @@ function setup() {
         mosaicking: "SIMPLE",
       },
       {
-        datasource: "ARPS",
-        bands: ["SR3", "SR4", "dataMask"],
+        datasource: DATASOURCE,
+        bands: dataSources[DATASOURCE].validBands.concat(dataSources[DATASOURCE].inputs[INPUT].bands),
         mosaicking: "ORBIT",
       },
     ],
@@ -32,7 +37,7 @@ function setup() {
 function preProcessScenes(collections) {
   // This creates the X (predictors) only once for the entire collection
   // This fullX will be filtered in evaluate pixel depending on clouds
-  var dates = collections.ARPS.scenes.orbits.map(
+  var dates = collections[DATASOURCE].scenes.orbits.map(
     (scene) => new Date(scene.dateFrom)
   );
   fullX = makeRegression(dates);
@@ -40,7 +45,7 @@ function preProcessScenes(collections) {
 }
 
 function evaluatePixel(samples) {
-  if (samples.ARPS.length == 0) {
+  if (samples[DATASOURCE].length == 0) {
     return [NaN];
   }
   var mse = 0;
@@ -50,10 +55,10 @@ function evaluatePixel(samples) {
   for (let i = 0; i < beta.length; i++) {
     beta[i] = b["c_" + (i + 1)];
   }
-  for (let i = 0; i < samples.ARPS.length; i++) {
-    const sample = samples.ARPS[i];
-    if (sample.dataMask == 1) {
-      const y = index(sample.SR4, sample.SR3);
+  for (let i = 0; i < samples[DATASOURCE].length; i++) {
+    const sample = samples[DATASOURCE][i];
+    if (dataSources[DATASOURCE].validate(sample)) {
+      const y = dataSources[DATASOURCE].inputs[INPUT].calculate(sample);
       const X = fullX[i];
       const pred = dot(X, beta);
       const residual = pred - y;
