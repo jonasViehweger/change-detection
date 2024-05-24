@@ -2,15 +2,21 @@ import makeRegression from "../utils/makeRegression";
 import lstsq from "../utils/lstsq";
 import { dataSources } from "../utils/datasources";
 
-const HARMONICS = 2;
-const DATASOURCE = "S2L2A";
-const INPUT = "NDVI"
+// CONFIG
+const c = {
+  HARMONICS: 2,
+  DATASOURCE: "ARPS",
+  INPUT: "NDVI"
+}
+// CONFIG
+
+const ds = dataSources[c.DATASOURCE];
 
 function setup() {
   return {
-    input: dataSources[DATASOURCE].validBands.concat(dataSources[DATASOURCE].inputs[INPUT].bands),
+    input: ds.validBands.concat(ds.inputs[c.INPUT].bands),
     output: {
-      bands: HARMONICS * 2 + 1,
+      bands: c.HARMONICS * 2 + 1,
       sampleType: "FLOAT32",
     },
     mosaicking: "ORBIT",
@@ -23,7 +29,7 @@ function preProcessScenes(collections) {
   var dates = collections.scenes.orbits.map(
     (scene) => new Date(scene.dateFrom)
   );
-  fullX = makeRegression(dates, HARMONICS);
+  fullX = makeRegression(dates, c.HARMONICS);
   return collections;
 }
 
@@ -33,12 +39,12 @@ function evaluatePixel(samples) {
   }
   let y = [];
   let X = [];
-  const N = HARMONICS * 2 + 1;
+  const N = c.HARMONICS * 2 + 1;
   for (let i = 0; i < N; i++) X[i] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
-    if (dataSources[DATASOURCE].validate(sample)) {
-      y.push(dataSources[DATASOURCE].inputs[INPUT].calculate(sample));
+    if (ds.validate(sample)) {
+      y.push(ds.inputs[c.INPUT].calculate(sample));
       for (let j = 0; j < N; j++) {
         X[j].push(fullX[i][j]);
       }
