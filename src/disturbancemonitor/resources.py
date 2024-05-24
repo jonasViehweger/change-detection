@@ -121,7 +121,12 @@ class S3:
             self.s3_out.delete(f"s3://{self.bucket_name}/{self.zarr_name}", recursive=True)
         except FileNotFoundError:
             pass
-        self.s3.delete_bucket(Bucket=self.bucket_name)
+        # try to delete the bucket if its empty
+        try:
+            self.s3.delete_bucket(Bucket=self.bucket_name)
+        except IOError:
+            pass
+
 
 
 class BYOC:

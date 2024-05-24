@@ -148,7 +148,7 @@ class ProcessAPI(Backend):
                     },
                     "mosaickingOrder": "leastRecent",
                 },
-                "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
+                "type": self.monitor_params.datasource_id,
             }
         ]
 
@@ -171,7 +171,7 @@ class ProcessAPI(Backend):
                     },
                     "mosaickingOrder": "leastRecent",
                 },
-                "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
+                "type": self.monitor_params.datasource_id,
                 "id": "ARPS",
             },
             {
@@ -220,7 +220,7 @@ class ProcessAPI(Backend):
                     "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
                     "mosaickingOrder": "leastRecent",
                 },
-                "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
+                "type": self.monitor_params.datasource_id,
                 "id": "ARPS",
             },
             {
@@ -403,10 +403,21 @@ class AsyncAPI(Backend):
         # delete non-cog async output
         self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
 
-    def compute_models(self):
-        with open("./evalscripts/beta.cjs", "r") as src:
-            beta_evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
+    def prepare_evalscript(self, path):
+        with open(path, "r") as src:
+            evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
+        eval_config = {
+            "HARMONICS": self.monitor_params.harmonics,
+            "DATASOURCE": self.monitor_params.datasource,
+            "INPUT": self.monitor_params.inputs[0],
+            "SENSITIVITY": self.monitor_params.sensitivity,
+            "BOUND": self.monitor_params.boundary,
+        }
+        split_config = evalscript.split("// CONFIG")
+        split_config[1] = json.dumps(eval_config) + ";"
+        return "\n".join(split_config)
 
+    def compute_models(self):
         beta_data = [
             {
                 "dataFilter": {
@@ -416,11 +427,14 @@ class AsyncAPI(Backend):
                     },
                     "mosaickingOrder": "leastRecent",
                 },
-                "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
+                "type": self.monitor_params.datasource_id,
             }
         ]
 
-        beta_request = self.base_request(beta_data, beta_evalscript)
+        beta_request = self.base_request(
+            beta_data, 
+            self.prepare_evalscript("./evalscripts/beta.cjs")
+        )
         beta = self.client.post(self.url, json=beta_request)
         beta.raise_for_status()
         async_id = beta.json()["id"]
@@ -428,9 +442,6 @@ class AsyncAPI(Backend):
         return async_id
 
     def compute_metric(self):
-        with open("./evalscripts/rmse.cjs", "r") as src:
-            sigma_evalscript = src.read()
-
         sigma_data = [
             {
                 "dataFilter": {
@@ -440,8 +451,8 @@ class AsyncAPI(Backend):
                     },
                     "mosaickingOrder": "leastRecent",
                 },
-                "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
-                "id": "ARPS",
+                "type": self.monitor_params.datasource_id,
+                "id": self.monitor_params.datasource,
             },
             {
                 "dataFilter": {
@@ -455,8 +466,10 @@ class AsyncAPI(Backend):
             },
         ]
 
-        sigma_request = self.base_request(sigma_data, sigma_evalscript)
-
+        sigma_request = self.base_request(
+            sigma_data, 
+            self.prepare_evalscript("./evalscripts/rmse.cjs")
+        )
         sigma = self.client.post(self.url, json=sigma_request)
         sigma.raise_for_status()
         async_id = sigma.json()["id"]
@@ -484,18 +497,14 @@ class AsyncAPI(Backend):
 
     def monitor(self, end: datetime.date = datetime.date.today()):
         start = self.monitor_params.last_monitored
-
-        with open("./evalscripts/predict_ccdc.cjs", "r") as src:
-            monitor_evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
-
         monitor_data = [
             {
                 "dataFilter": {
                     "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
                     "mosaickingOrder": "leastRecent",
                 },
-                "type": "byoc-b690a8ba-05c4-49dc-91c7-8484a1007176",
-                "id": "ARPS",
+                "type": self.monitor_params.datasource_id,
+                "id": self.monitor_params.datasource,
             },
             {
                 "dataFilter": {"timeRange": {
@@ -507,7 +516,10 @@ class AsyncAPI(Backend):
             },
         ]
 
-        monitor_request = self.base_request(monitor_data, monitor_evalscript)
+        monitor_request = self.base_request(
+            monitor_data, 
+            self.prepare_evalscript("./evalscripts/predict_ccdc.cjs")
+        )
         monitor_data = self.client.post(self.url, json=monitor_request)
         try:
             monitor_data.raise_for_status()

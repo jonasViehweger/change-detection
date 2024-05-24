@@ -56,6 +56,9 @@ def load_monitor(name, backend="ProcessAPI"):
         geometry = json.load(fs)
     return start_monitor(geometry=geometry, name=name, backend=backend, **config[f"{name}"], **config[f"{name}.{backend}"])
 
+datasource_ids = {
+    "S2L2A": "sentinel-2-l2a"
+}
 
 @dataclass
 class MonitorParameters:
@@ -64,6 +67,7 @@ class MonitorParameters:
     geometry: dict
     resolution: tuple
     datasource: str
+    datasource_id: str = None
     harmonics: int = 2
     inputs: list[str] = field(default_factory=lambda: ["NDVI"])
     metric: str = "RMSE"
@@ -75,6 +79,8 @@ class MonitorParameters:
     def __post_init__(self):
         if self.last_monitored is None:
             self.last_monitored = self.monitoring_start
+        if self.datasource_id is None:
+            self.datasource_id = datasource_ids[self.datasource] 
 
     @property
     def fit_start(self) -> datetime.date:
