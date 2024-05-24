@@ -5,7 +5,7 @@ import { dataSources } from "../utils/datasources";
 
 const HARMONICS = 2;
 const DATASOURCE = "S2L2A";
-const INPUT = "NDVI"
+const INPUT = "NDVI";
 
 var bands = new Array(HARMONICS * 2 + 2);
 for (let i = 0; i < HARMONICS * 2 + 1; i++) {

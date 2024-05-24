@@ -35,23 +35,66 @@ function dot(A, B) {
     return result;
   }
 
+var dataSources = {
+    ARPS: {
+        validBands: ["dataMask"],
+        validate: function (sample) {
+            return sample.dataMask;
+        },
+        inputs: {
+            NDVI: {
+                bands: ["SR3", "SR4"],
+                calculate: function (sample) {
+                    return (sample.SR4 - sample.SR3) / (sample.SR4 + sample.SR3);
+                }
+            }
+        }
+    },
+    S2L2A: {
+        validBands: ["dataMask", "SCL"],
+        validate: function (sample) {
+            // Define codes as invalid:
+            const invalid = [
+                0, // NO_DATA
+                1, // SATURATED_DEFECTIVE
+                3, // CLOUD_SHADOW
+                7, // CLOUD_LOW_PROBA
+                8, // CLOUD_MEDIUM_PROBA
+                9, // CLOUD_HIGH_PROBA
+                10 // THIN_CIRRUS
+            ];
+            return !invalid.includes(sample.SCL) && sample.dataMask
+        },
+        inputs: {
+            NDVI: {
+                bands: ["B04", "B08"],
+                calculate: function (sample) {
+                    return (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+                }
+            }
+        }
+    }
+};
+
 const HARMONICS = 2;
 const SENSITIVITY = 5;
 const BOUND = 5;
-var bands = new Array(HARMONICS * 2 + 3);
+const DATASOURCE = "ARPS";
+const INPUT = "NDVI";
+
+var bands = new Array(HARMONICS * 2 + 1);
 for (let i = 0; i < HARMONICS * 2 + 1; i++) {
-  bands[i] = "c" + (i + 1);
+  bands[i] = "c_" + (i + 1);
 }
-bands[bands.length - 2] = "process";
-bands[bands.length - 1] = "metric1";
+bands.push("process", "metric", "disturbedDate");
 
 function setup() {
   return {
     input: [
       { datasource: "beta", bands: bands, mosaicking: "SIMPLE" },
       {
-        datasource: "ARPS",
-        bands: ["SR3", "SR4", "dataMask"],
+        datasource: DATASOURCE,
+        bands: dataSources[DATASOURCE].validBands.concat(dataSources[DATASOURCE].inputs[INPUT].bands),
         mosaicking: "ORBIT",
       },
     ],
@@ -68,7 +111,7 @@ function setup() {
 function preProcessScenes(collections) {
   // This creates the X (predictors) only once for the entire collection
   // This fullX will be filtered in evaluate pixel depending on clouds
-  var dates = collections.ARPS.scenes.orbits.map(
+  var dates = collections[DATASOURCE].scenes.orbits.map(
     (scene) => new Date(scene.dateFrom)
   );
   fullX = makeRegression(dates, HARMONICS);
@@ -76,24 +119,25 @@ function preProcessScenes(collections) {
 }
 
 function evaluatePixel(samples, scenes) {
-  if (samples.ARPS.length == 0) {
-    return [0, 0];
-  }
   const b = samples.beta[0];
   var process = b.process;
+  var disturbedDate = b.disturbedDate;
+  if (samples[DATASOURCE].length == 0 || disturbedDate > 0) {
+    return [disturbedDate, process];
+  }
   var beta = new Array(HARMONICS * 2 + 1);
   for (let i = 0; i < beta.length; i++) {
-    beta[i] = b["c" + (i + 1)];
+    beta[i] = b["c_" + (i + 1)];
   }
-  for (let i = 0; i < samples.ARPS.length; i++) {
-    const sample = samples.ARPS[i];
-    if (sample.dataMask == 1) {
-      const y = (sample.SR4 - sample.SR3) / (sample.SR4 + sample.SR3);
+  for (let i = 0; i < samples[DATASOURCE].length; i++) {
+    const sample = samples[DATASOURCE][i];
+    if (dataSources[DATASOURCE].validate(sample)) {
+      const y = dataSources[DATASOURCE].inputs[INPUT].calculate(sample);
       const X = fullX[i];
       const pred = dot(X, beta);
-      process = updateProcessCCDC(pred, y, process, b.metric1);
+      process = updateProcessCCDC(pred, y, process, b.metric);
       if (process >= BOUND) {
-        var disturbedDate = dateToInt(scenes.ARPS.scenes.orbits[i].dateFrom);
+        disturbedDate = dateToInt(scenes[DATASOURCE].scenes.orbits[i].dateFrom);
         break;
       }
     }

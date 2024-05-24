@@ -357,6 +357,26 @@ class AsyncAPI(Backend):
         # delete non-cog async output
         self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
 
+    def write_monitor(self, async_id):
+        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
+        async_out = f"{s3_root}/{async_id}/default.tif"
+        with rasterio.Env(AWSSession(session=self.s3.session)):
+            with rasterio.open(async_out) as src:
+                profile = src.profile
+                profile.update(driver="COG", compress="DEFLATE", blockxsize=1024, blockysize=1024, tiled=True, count=1)
+                with BytesIO() as out:
+                    with rasterio.open(out, "w", **profile) as dst:
+                        dst.write(src.read(1), 1)
+                    self.s3.write_binary(f"{s3_root}/disturbedDate.tif", out)
+
+                with BytesIO() as out:
+                    with rasterio.open(out, "w", **profile) as dst:
+                        dst.write(src.read(2), 1)
+                    self.s3.write_binary(f"{s3_root}/process.tif", out)
+
+        # delete non-cog async output
+        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
+
     def write_models(self, async_id):
         s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
         async_out = f"{s3_root}/{async_id}/default.tif"
@@ -478,17 +498,27 @@ class AsyncAPI(Backend):
                 "id": "ARPS",
             },
             {
-                "dataFilter": {"timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2022-01-01T00:00:00Z"}},
-                "type": f"byoc-{self.byoc-id}",
+                "dataFilter": {"timeRange": {
+                    "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z", 
+                    "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z"
+                    }},
+                "type": f"byoc-{self.byoc_id}",
                 "id": "beta",
             },
         ]
 
         monitor_request = self.base_request(monitor_data, monitor_evalscript)
         monitor_data = self.client.post(self.url, json=monitor_request)
-        monitor_data.raise_for_status()
+        try:
+            monitor_data.raise_for_status()
+        except:
+            print(monitor_data.text)
+            raise
 
-        self.s3.write_monitor(monitor_data.content)
+        async_id = monitor_data.json()["id"]
+        self.wait_for_async(async_id)
+
+        self.write_monitor(async_id)
         self.monitor_params.last_monitored = end
         self.dump()
 
