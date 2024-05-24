@@ -2,13 +2,19 @@ import makeRegression from "../utils/makeRegression";
 import dot from "../utils/dot";
 import { dataSources } from "../utils/datasources";
 
+const c = 
+// CONFIG
+{
+  HARMONICS: 2,
+  DATASOURCE: "ARPS",
+  INPUT: "NDVI"
+}
+// CONFIG
 
-const HARMONICS = 2;
-const DATASOURCE = "S2L2A";
-const INPUT = "NDVI";
+const ds = dataSources[c.DATASOURCE];
 
-var bands = new Array(HARMONICS * 2 + 2);
-for (let i = 0; i < HARMONICS * 2 + 1; i++) {
+var bands = new Array(c.HARMONICS * 2 + 2);
+for (let i = 0; i < c.HARMONICS * 2 + 1; i++) {
   bands[i] = "c_" + (i + 1);
 }
 bands[bands.length - 1] = "process";
@@ -22,8 +28,8 @@ function setup() {
         mosaicking: "SIMPLE",
       },
       {
-        datasource: DATASOURCE,
-        bands: dataSources[DATASOURCE].validBands.concat(dataSources[DATASOURCE].inputs[INPUT].bands),
+        datasource: c.DATASOURCE,
+        bands: ds.validBands.concat(ds.inputs[c.INPUT].bands),
         mosaicking: "ORBIT",
       },
     ],
@@ -37,7 +43,7 @@ function setup() {
 function preProcessScenes(collections) {
   // This creates the X (predictors) only once for the entire collection
   // This fullX will be filtered in evaluate pixel depending on clouds
-  var dates = collections[DATASOURCE].scenes.orbits.map(
+  var dates = collections[c.DATASOURCE].scenes.orbits.map(
     (scene) => new Date(scene.dateFrom)
   );
   fullX = makeRegression(dates);
@@ -45,20 +51,20 @@ function preProcessScenes(collections) {
 }
 
 function evaluatePixel(samples) {
-  if (samples[DATASOURCE].length == 0) {
+  if (samples[c.DATASOURCE].length == 0) {
     return [NaN];
   }
   var mse = 0;
   var valid = 0;
   const b = samples.beta[0];
-  var beta = new Array(HARMONICS * 2 + 1);
+  var beta = new Array(c.HARMONICS * 2 + 1);
   for (let i = 0; i < beta.length; i++) {
     beta[i] = b["c_" + (i + 1)];
   }
-  for (let i = 0; i < samples[DATASOURCE].length; i++) {
-    const sample = samples[DATASOURCE][i];
-    if (dataSources[DATASOURCE].validate(sample)) {
-      const y = dataSources[DATASOURCE].inputs[INPUT].calculate(sample);
+  for (let i = 0; i < samples[c.DATASOURCE].length; i++) {
+    const sample = samples[c.DATASOURCE][i];
+    if (ds.validate(sample)) {
+      const y = ds.inputs[c.INPUT].calculate(sample);
       const X = fullX[i];
       const pred = dot(X, beta);
       const residual = pred - y;

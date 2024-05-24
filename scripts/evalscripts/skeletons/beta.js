@@ -2,8 +2,10 @@ import makeRegression from "../utils/makeRegression";
 import lstsq from "../utils/lstsq";
 import { dataSources } from "../utils/datasources";
 
+
+const c = 
 // CONFIG
-const c = {
+{
   HARMONICS: 2,
   DATASOURCE: "ARPS",
   INPUT: "NDVI"

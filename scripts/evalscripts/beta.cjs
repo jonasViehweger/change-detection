@@ -168,8 +168,9 @@ var dataSources = {
     }
 };
 
+const c = 
 // CONFIG
-const c = {
+{
   HARMONICS: 2,
   DATASOURCE: "ARPS",
   INPUT: "NDVI"

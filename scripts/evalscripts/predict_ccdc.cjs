@@ -76,14 +76,21 @@ var dataSources = {
     }
 };
 
-const HARMONICS = 2;
-const SENSITIVITY = 5;
-const BOUND = 5;
-const DATASOURCE = "ARPS";
-const INPUT = "NDVI";
+const c = 
+// CONFIG
+{
+  HARMONICS: 2,
+  DATASOURCE: "ARPS",
+  INPUT: "NDVI",
+  SENSITIVITY: 5,
+  BOUND: 5
+};
+// CONFIG
 
-var bands = new Array(HARMONICS * 2 + 1);
-for (let i = 0; i < HARMONICS * 2 + 1; i++) {
+const ds = dataSources[c.DATASOURCE];
+
+var bands = new Array(c.HARMONICS * 2 + 1);
+for (let i = 0; i < c.HARMONICS * 2 + 1; i++) {
   bands[i] = "c_" + (i + 1);
 }
 bands.push("process", "metric", "disturbedDate");
@@ -93,8 +100,8 @@ function setup() {
     input: [
       { datasource: "beta", bands: bands, mosaicking: "SIMPLE" },
       {
-        datasource: DATASOURCE,
-        bands: dataSources[DATASOURCE].validBands.concat(dataSources[DATASOURCE].inputs[INPUT].bands),
+        datasource: c.DATASOURCE,
+        bands: ds.validBands.concat(ds.inputs[c.INPUT].bands),
         mosaicking: "ORBIT",
       },
     ],
@@ -111,10 +118,10 @@ function setup() {
 function preProcessScenes(collections) {
   // This creates the X (predictors) only once for the entire collection
   // This fullX will be filtered in evaluate pixel depending on clouds
-  var dates = collections[DATASOURCE].scenes.orbits.map(
+  var dates = collections[c.DATASOURCE].scenes.orbits.map(
     (scene) => new Date(scene.dateFrom)
   );
-  fullX = makeRegression(dates, HARMONICS);
+  fullX = makeRegression(dates, c.HARMONICS);
   return collections;
 }
 
@@ -122,22 +129,22 @@ function evaluatePixel(samples, scenes) {
   const b = samples.beta[0];
   var process = b.process;
   var disturbedDate = b.disturbedDate;
-  if (samples[DATASOURCE].length == 0 || disturbedDate > 0) {
+  if (samples[c.DATASOURCE].length == 0 || disturbedDate > 0) {
     return [disturbedDate, process];
   }
-  var beta = new Array(HARMONICS * 2 + 1);
+  var beta = new Array(c.HARMONICS * 2 + 1);
   for (let i = 0; i < beta.length; i++) {
     beta[i] = b["c_" + (i + 1)];
   }
-  for (let i = 0; i < samples[DATASOURCE].length; i++) {
-    const sample = samples[DATASOURCE][i];
-    if (dataSources[DATASOURCE].validate(sample)) {
-      const y = dataSources[DATASOURCE].inputs[INPUT].calculate(sample);
+  for (let i = 0; i < samples[c.DATASOURCE].length; i++) {
+    const sample = samples[c.DATASOURCE][i];
+    if (ds.validate(sample)) {
+      const y = ds.inputs[c.INPUT].calculate(sample);
       const X = fullX[i];
       const pred = dot(X, beta);
       process = updateProcessCCDC(pred, y, process, b.metric);
-      if (process >= BOUND) {
-        disturbedDate = dateToInt(scenes[DATASOURCE].scenes.orbits[i].dateFrom);
+      if (process >= c.BOUND) {
+        disturbedDate = dateToInt(scenes[c.DATASOURCE].scenes.orbits[i].dateFrom);
         break;
       }
     }
@@ -152,7 +159,7 @@ function dateToInt(datetimestring) {
 
 function updateProcessCCDC(pred, actual, process, rmse = 1) {
   const residual = pred - actual;
-  if (Math.abs(residual) > SENSITIVITY * rmse) {
+  if (Math.abs(residual) > c.SENSITIVITY * rmse) {
     return ++process;
   } else {
     return 0;
