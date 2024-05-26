@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from time import sleep
 
+import boto3
 import numpy as np
 import rasterio
 import toml
@@ -255,6 +256,10 @@ class AsyncAPI(Backend):
         bucket_name=None,
         folder_name=None,
         byoc_id=None,
+        sh_profile=None,
+        s3_profile=None,
+        async_profile=None,
+        role_arn=None,
         rollback=True,
         **kwargs,
     ):
@@ -264,7 +269,9 @@ class AsyncAPI(Backend):
         self.client = SHClient()
         self.byoc_id = byoc_id
         self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
-        self.s3 = S3(self.bucket_name, self.folder_name)
+        self.s3 = S3(self.bucket_name, self.folder_name, s3_profile)
+        self.async_profile = async_profile
+        self.role_arn = role_arn
         self.rollback = rollback
 
         self.url = "https://services.sentinel-hub.com/api/v1/async/process"
@@ -301,7 +308,7 @@ class AsyncAPI(Backend):
                         {
                             "Sid": "Async Permissions",
                             "Effect": "Allow",
-                            "Principal": {"AWS": "arn:aws:iam::450268950967:user/jonas"},
+                            "Principal": {"AWS": self.role_arn},
                             "Action": ["s3:GetObject", "s3:PutObject"],
                             "Resource": [f"arn:aws:s3:::{self.bucket_name}/*"],
                         },
@@ -478,6 +485,7 @@ class AsyncAPI(Backend):
 
     def base_request(self, data: list, evalscript: str):
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
+        credentials = boto3.session.Session(profile_name=self.async_profile).get_credentials()
         return {
             "input": {"bounds": {"geometry": self.monitor_params.geometry, "properties": {"crs": crs}}, "data": data},
             "output": {
@@ -487,8 +495,8 @@ class AsyncAPI(Backend):
                 "delivery": {
                     "s3": {
                         "url": f"s3://{self.bucket_name}/{self.folder_name}",
-                        "accessKey": "AKIAWRVQ66G363FBBOML",
-                        "secretAccessKey": "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",
+                        "accessKey": credentials.access_key,
+                        "secretAccessKey": credentials.secret_key,
                     }
                 },
             },
