@@ -126,6 +126,7 @@ function preProcessScenes(collections) {
 }
 
 function evaluatePixel(samples, scenes) {
+  throw new Error(JSON.stringify(samples))
   const b = samples.beta[0];
   var process = b.process;
   var disturbedDate = b.disturbedDate;

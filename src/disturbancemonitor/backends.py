@@ -13,8 +13,10 @@ import numpy as np
 import rasterio
 import toml
 from rasterio.session import AWSSession
+from rasterio.io import MemoryFile
 
-from .resources import BYOC, S3, ResourceManager, SHClient, ZarrSH
+from .resources import BYOC, S3, ResourceManager, SHClient
+from .cog import write_metric, write_models, write_monitor
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
@@ -76,18 +78,20 @@ class ProcessAPI(Backend):
     def __init__(
         self,
         monitor_params,
-        zarr_id=None,
+        byoc_id=None,
+        s3_profile=None,
         bucket_name=None,
+        folder_name=None,
         rollback=True,
         **kwargs,
     ):
-        self.random_id = "".join(random.choices(string.ascii_letters + string.digits, k=8))
-        self.bucket_name = (bucket_name or monitor_params.name + "-" + self.random_id).lower()
-        self.zarr_name = monitor_params.name + ".zarr"
-        self.zarr_id = zarr_id
+        self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
+        self.folder_name = folder_name or (monitor_params.name + "-" + self.random_id).lower()
+        self.byoc_id = byoc_id
         self.client = SHClient()
-        self.s3 = S3(self.bucket_name, self.zarr_name)
-        self.zarr = ZarrSH(self.zarr_name, self.bucket_name, self.client, self.zarr_id)
+        self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
+        self.s3 = S3(self.bucket_name, self.folder_name, s3_profile)
         self.rollback = rollback
 
         self.url = "https://services.sentinel-hub.com/api/v1/process"
@@ -97,7 +101,7 @@ class ProcessAPI(Backend):
         subset_dict = {
             k: v
             for k, v in self.__dict__.items()
-            if k not in ["client", "url", "zarr_name", "monitor_params", "zarr", "s3"]
+            if k not in ["client", "url", "monitor_params", "byoc", "s3"]
         }
         return copy(subset_dict)
 
@@ -126,20 +130,20 @@ class ProcessAPI(Backend):
             print("2/6 Fitting model")
             models = self.compute_models()
             print("3/6 Writing model to bucket")
-            self.s3.write_models(models)
+            with MemoryFile(models) as memfile: 
+                write_models(memfile, self.s3)
             print("4/6 Ingesting model to SH")
-            self.zarr_id = self.zarr.ingest_dataset()
-            manager.add_resource(self.zarr)
+            self.byoc_id = self.byoc.create_byoc()
+            manager.add_resource(self.byoc)
+            self.byoc.ingest_tile(self.monitor_params.monitoring_start)
             print("5/6 Computing metric")
             metrics = self.compute_metric()
             print("6/6 Writing metric to bucket")
-            self.s3.write_metric(metrics)
+            with MemoryFile(metrics) as memfile: 
+                write_models(memfile, self.s3)
             self.monitor_params.state = "INITIALIZED"
 
     def compute_models(self):
-        with open("./evalscripts/beta.cjs", "r") as src:
-            beta_evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
-
         beta_data = [
             {
                 "dataFilter": {
@@ -153,16 +157,20 @@ class ProcessAPI(Backend):
             }
         ]
 
-        beta_request = self.base_request(beta_data, beta_evalscript)
+        beta_request = self.base_request(
+            beta_data, 
+            prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs")
+        )
         beta = self.client.post(self.url, json=beta_request)
 
-        beta.raise_for_status()
+        try:
+            beta.raise_for_status()
+        except:
+            print(beta.content)
+            raise
         return beta.content
 
     def compute_metric(self):
-        with open("./evalscripts/rmse.cjs", "r") as src:
-            sigma_evalscript = src.read()
-
         sigma_data = [
             {
                 "dataFilter": {
@@ -173,7 +181,7 @@ class ProcessAPI(Backend):
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": self.monitor_params.datasource_id,
-                "id": "ARPS",
+                "id": self.monitor_params.datasource,
             },
             {
                 "dataFilter": {
@@ -182,12 +190,15 @@ class ProcessAPI(Backend):
                         "to": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
                     }
                 },
-                "type": f"zarr-{self.zarr_id}",
+                "type": f"byoc-{self.byoc_id}",
                 "id": "beta",
             },
         ]
 
-        sigma_request = self.base_request(sigma_data, sigma_evalscript)
+        sigma_request = self.base_request(
+            sigma_data, 
+            prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs")
+        )
 
         sigma = self.client.post(self.url, json=sigma_request)
         try:
@@ -211,43 +222,68 @@ class ProcessAPI(Backend):
 
     def monitor(self, end: datetime.date = datetime.date.today()):
         start = self.monitor_params.last_monitored
-
-        with open("./evalscripts/predict_ccdc.cjs", "r") as src:
-            monitor_evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
-
         monitor_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
+                    "timeRange": {
+                        "from": f"{start.isoformat()}T00:00:00Z", 
+                        "to": f"{end.isoformat()}T23:59:59Z"
+                    },
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": self.monitor_params.datasource_id,
-                "id": "ARPS",
+                "id": self.monitor_params.datasource,
             },
             {
-                "dataFilter": {"timeRange": {"from": "2021-01-01T00:00:00Z", "to": "2022-01-01T00:00:00Z"}},
-                "type": f"zarr-{self.zarr_id}",
+                "dataFilter": {
+                    "timeRange": {
+                        "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z", 
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z"
+                    }
+                },
+                "type": f"byoc-{self.byoc_id}",
                 "id": "beta",
             },
         ]
 
-        monitor_request = self.base_request(monitor_data, monitor_evalscript)
+        monitor_request = self.base_request(
+            monitor_data, 
+            prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
+        )
         monitor_data = self.client.post(self.url, json=monitor_request)
-        monitor_data.raise_for_status()
+        try:
+            monitor_data.raise_for_status()
+        except:
+            print(monitor_data.content)
+            raise
 
-        self.s3.write_monitor(monitor_data.content)
+        with MemoryFile(monitor_data.content) as memfile: 
+            write_models(memfile, self.s3)
         self.monitor_params.last_monitored = end
         self.dump()
 
     def delete(self):
         """
-        Deletes the S3 Folder for the monitor and the SH Zarr collection
+        Deletes the S3 Folder for the monitor and the SH BYOC collection
         """
         self.s3.delete()
-        self.zarr.delete()
+        self.byoc.delete()
         self.monitor_params.state = "DELETED"
         self.dump()
 
+def prepare_evalscript(monitor_params, path):
+    with open(path, "r") as src:
+        evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
+    eval_config = {
+        "HARMONICS": monitor_params.harmonics,
+        "DATASOURCE": monitor_params.datasource,
+        "INPUT": monitor_params.inputs[0],
+        "SENSITIVITY": monitor_params.sensitivity,
+        "BOUND": monitor_params.boundary,
+    }
+    split_config = evalscript.split("// CONFIG")
+    split_config[1] = json.dumps(eval_config) + ";"
+    return "\n".join(split_config)
 
 class AsyncAPI(Backend):
     def __init__(
@@ -281,7 +317,7 @@ class AsyncAPI(Backend):
         subset_dict = {
             k: v
             for k, v in self.__dict__.items()
-            if k not in ["client", "url", "zarr_name", "monitor_params", "zarr", "s3"]
+            if k not in ["client", "url", "monitor_params", "byoc", "s3"]
         }
         return copy(subset_dict)
 
@@ -319,15 +355,15 @@ class AsyncAPI(Backend):
             print("2/6 Fitting model")
             async_id = self.compute_models()
             print("3/6 Writing model to bucket")
-            self.write_models(async_id)
+            self.write_async(async_id, write_models)
             print("4/6 Ingesting model to SH")
             self.byoc_id = self.byoc.create_byoc()
             manager.add_resource(self.byoc)
-            self.byoc_id = self.byoc.ingest_tile(self.monitor_params.monitoring_start)
+            self.byoc.ingest_tile(self.monitor_params.monitoring_start)
             print("5/6 Computing metric")
             async_id = self.compute_metric()
             print("6/6 Writing metric to bucket")
-            self.write_metric(async_id)
+            self.write_async(async_id, write_metric)
             self.monitor_params.state = "INITIALIZED"
 
     def wait_for_async(self, async_id):
@@ -340,7 +376,7 @@ class AsyncAPI(Backend):
                 break
                 # see if an error was made:
         try:
-            with self.s3.s3_out.open(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}/error.json") as fs:
+            with self.s3.s3fs.open(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}/error.json") as fs:
                 error = json.load(fs)
                 raise RuntimeError(f"Async request failed: {error['message']}")
         except FileNotFoundError:
@@ -348,81 +384,13 @@ class AsyncAPI(Backend):
 
         print("... Finished")
 
-    def write_metric(self, async_id):
-        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
-        async_out = f"{s3_root}/{async_id}/default.tif"
+    def write_async(self, async_id, write_function):
+        async_out = f"{self.s3.root}/{async_id}/default.tif"
         with rasterio.Env(AWSSession(session=self.s3.session)):
-            with rasterio.open(async_out) as src:
-                profile = src.profile
-                profile.update(driver="COG", compress="DEFLATE", blockxsize=1024, blockysize=1024, tiled=True)
-                with BytesIO() as out:
-                    # Create a new file to write to
-                    with rasterio.open(out, "w", **profile) as dst:
-                        dst.write(src.read())
-                    self.s3.write_binary(f"{s3_root}/metric.tif", out)
+            write_function(async_out, self.s3)
 
         # delete non-cog async output
-        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
-
-    def write_monitor(self, async_id):
-        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
-        async_out = f"{s3_root}/{async_id}/default.tif"
-        with rasterio.Env(AWSSession(session=self.s3.session)):
-            with rasterio.open(async_out) as src:
-                profile = src.profile
-                profile.update(driver="COG", compress="DEFLATE", blockxsize=1024, blockysize=1024, tiled=True, count=1)
-                with BytesIO() as out:
-                    with rasterio.open(out, "w", **profile) as dst:
-                        dst.write(src.read(1), 1)
-                    self.s3.write_binary(f"{s3_root}/disturbedDate.tif", out)
-
-                with BytesIO() as out:
-                    with rasterio.open(out, "w", **profile) as dst:
-                        dst.write(src.read(2), 1)
-                    self.s3.write_binary(f"{s3_root}/process.tif", out)
-
-        # delete non-cog async output
-        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
-
-    def write_models(self, async_id):
-        s3_root = f"s3://{self.bucket_name}/{self.folder_name}"
-        async_out = f"{s3_root}/{async_id}/default.tif"
-        with rasterio.Env(AWSSession(session=self.s3.session)):
-            with rasterio.open(async_out) as src:
-                profile = src.profile
-                profile.update(driver="COG", compress="DEFLATE", blockxsize=1024, blockysize=1024, tiled=True)
-                with BytesIO() as out:
-                    # Create a new file to write to
-                    with rasterio.open(out, "w", **profile) as dst:
-                        dst.write(src.read())
-                    self.s3.write_binary(f"{s3_root}/c.tif", out)
-
-                # Init all other necessary files (files have only 1 band, init with 0)
-                profile.update(count=1)
-                zero_raster = np.zeros((profile["height"], profile["width"]), dtype=np.float32)
-                with BytesIO() as out:
-                    with rasterio.open(out, "w", **profile) as dst:
-                        dst.write(zero_raster, 1)
-                    self.s3.write_binary(f"{s3_root}/metric.tif", out)
-                    self.s3.write_binary(f"{s3_root}/disturbedDate.tif", out)
-                    self.s3.write_binary(f"{s3_root}/process.tif", out)
-
-        # delete non-cog async output
-        self.s3.s3_out.delete(f"s3://{self.bucket_name}/{self.folder_name}/{async_id}", recursive=True)
-
-    def prepare_evalscript(self, path):
-        with open(path, "r") as src:
-            evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
-        eval_config = {
-            "HARMONICS": self.monitor_params.harmonics,
-            "DATASOURCE": self.monitor_params.datasource,
-            "INPUT": self.monitor_params.inputs[0],
-            "SENSITIVITY": self.monitor_params.sensitivity,
-            "BOUND": self.monitor_params.boundary,
-        }
-        split_config = evalscript.split("// CONFIG")
-        split_config[1] = json.dumps(eval_config) + ";"
-        return "\n".join(split_config)
+        self.s3.s3fs.delete(f"{self.s3.root}/{async_id}", recursive=True)
 
     def compute_models(self):
         beta_data = [
@@ -440,7 +408,7 @@ class AsyncAPI(Backend):
 
         beta_request = self.base_request(
             beta_data, 
-            self.prepare_evalscript("./evalscripts/beta.cjs")
+            prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs")
         )
         beta = self.client.post(self.url, json=beta_request)
         beta.raise_for_status()
@@ -475,7 +443,7 @@ class AsyncAPI(Backend):
 
         sigma_request = self.base_request(
             sigma_data, 
-            self.prepare_evalscript("./evalscripts/rmse.cjs")
+            prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs")
         )
         sigma = self.client.post(self.url, json=sigma_request)
         sigma.raise_for_status()
@@ -508,17 +476,22 @@ class AsyncAPI(Backend):
         monitor_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
+                    "timeRange": {
+                        "from": f"{start.isoformat()}T00:00:00Z", 
+                        "to": f"{end.isoformat()}T23:59:59Z"
+                    },
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": self.monitor_params.datasource_id,
                 "id": self.monitor_params.datasource,
             },
             {
-                "dataFilter": {"timeRange": {
-                    "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z", 
-                    "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z"
-                    }},
+                "dataFilter": {
+                    "timeRange": {
+                        "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z", 
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z"
+                    }
+                },
                 "type": f"byoc-{self.byoc_id}",
                 "id": "beta",
             },
@@ -526,7 +499,7 @@ class AsyncAPI(Backend):
 
         monitor_request = self.base_request(
             monitor_data, 
-            self.prepare_evalscript("./evalscripts/predict_ccdc.cjs")
+            prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
         )
         monitor_data = self.client.post(self.url, json=monitor_request)
         try:
@@ -538,13 +511,13 @@ class AsyncAPI(Backend):
         async_id = monitor_data.json()["id"]
         self.wait_for_async(async_id)
 
-        self.write_monitor(async_id)
+        self.write_async(async_id, write_monitor)
         self.monitor_params.last_monitored = end
         self.dump()
 
     def delete(self):
         """
-        Deletes the S3 Folder for the monitor and the SH Zarr collection
+        Deletes the S3 Folder for the monitor and the SH BYOC collection
         """
         self.s3.delete()
         self.monitor_params.state = "DELETED"

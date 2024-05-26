@@ -42,6 +42,10 @@ def start_monitor(
         boundary=boundary,
         state=state,
     )
+    config = load_config()
+    if name in config and name+"."+backend in config:
+        if config[name]["state"] == "INITIALIZED":
+            raise AttributeError(f"Monitor with name {name} and backend {backend} already exists. Use load_monitor('{name}', backend='{backend}') instead.")
     Backend = BACKENDS[backend]
     backend = Backend(params, **kwargs)
     if state == "NOT_INITIALIZED":
@@ -50,10 +54,13 @@ def start_monitor(
     return backend
 
 
+def load_config():
+    with open(CONFIG_PATH / "config.toml", "r") as configfile:
+        return toml.load(configfile)
+
 def load_monitor(name, backend="ProcessAPI"):
     geom_out = CONFIG_PATH / "geoms"
-    with open(CONFIG_PATH / "config.toml", "r") as configfile:
-        config = toml.load(configfile)
+    config = load_config()
     with open(geom_out / (name + ".geojson")) as fs:
         geometry = json.load(fs)
     return start_monitor(geometry=geometry, name=name, backend=backend, **config[f"{name}"], **config[f"{name}.{backend}"])
@@ -87,20 +94,3 @@ class MonitorParameters:
     @property
     def fit_start(self) -> datetime.date:
         return self.monitoring_start - datetime.timedelta(days=365)
-
-
-class Monitor:
-    pass
-    # create
-    # name, harmonics, inputs (NDVI?), metric, sensitivity, boundary
-
-    # load
-    # name
-
-    # delete
-    # name
-
-    # monitor
-
-    # inspect
-    # point
