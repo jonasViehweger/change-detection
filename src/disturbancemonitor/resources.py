@@ -1,7 +1,7 @@
+import datetime
 import json
 import os
 from contextlib import suppress
-from functools import wraps
 from io import BytesIO
 from pathlib import Path
 from time import sleep
@@ -16,7 +16,7 @@ from requests.exceptions import HTTPError
 
 
 class ResourceManager:
-    def __init__(self, rollback=True):
+    def __init__(self, rollback: bool = True):
         self.resources = []
         self.rollback = rollback
 
@@ -26,7 +26,7 @@ class ResourceManager:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val):
         if exc_type:
             print(f"Exception occurred: {exc_val}. \nRolling back resources.")
             for resource in reversed(self.resources):
@@ -35,22 +35,16 @@ class ResourceManager:
         return False  # Propagate the exception
 
 
-def add_failure_message(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            response = func(*args, **kwargs)
-            response.raise_for_status()
-            return response
-        except HTTPError as e:
-            print(f"Request failed: {e.response.status_code} - {e.response.text}")
-            raise
-
-    return wrapper
-
-
 class S3:
-    def __init__(self, bucket_name, folder_name, profile="default"):
+    def __init__(self, bucket_name: str, folder_name: str, profile: str = "default") -> None:
+        """
+        Initializes an S3 object.
+
+        Args:
+            bucket_name (str): The name of the S3 bucket.
+            folder_name (str): The name of the folder within the S3 bucket.
+            profile (str, optional): The name of the AWS profile to use. Defaults to "default".
+        """
         self.bucket_name = bucket_name
         self.folder_name = folder_name
         self.root = f"s3://{self.bucket_name}/{self.folder_name}"
@@ -58,7 +52,7 @@ class S3:
         self.session = boto3.session.Session(profile_name=profile)
         self.client = self.session.client("s3", region_name="eu-central-1")
 
-    def create_bucket(self, policy):
+    def create_bucket(self, policy: dict) -> None:
         location = {"LocationConstraint": "eu-central-1"}
         with suppress(self.client.exceptions.BucketAlreadyOwnedByYou):
             self.client.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=location)
@@ -69,12 +63,14 @@ class S3:
         # Set the new policy
         self.client.put_bucket_policy(Bucket=self.bucket_name, Policy=bucket_policy)
 
-    def write_binary(self, filename: str, binary: BytesIO):
+    def write_binary(self, filename: str, binary: BytesIO) -> None:
         with self.s3fs.open(filename, "wb") as f:
             f.write(binary.getvalue())
 
-    def delete(self):
-        """"""
+    def delete(self) -> None:
+        """
+        Tries to delete the folder and the bucket, if the bucket is empty.
+        """
         with suppress(FileNotFoundError):
             self.s3fs.delete(f"s3://{self.bucket_name}/{self.folder_name}", recursive=True)
         # try to delete the bucket if its empty
@@ -82,22 +78,59 @@ class S3:
             self.client.delete_bucket(Bucket=self.bucket_name)
 
 
+class SHClient:
+    def __init__(self, profile: str = "default-profile") -> None:
+        """
+        Initializes a new instance of SHClient. This class takes care of handling the OAuth2 authentication with
+        Sentinel Hub services. First priority is given to the environment variables SH_CLIENT_ID and SH_CLIENT_SECRET.
+
+        If those are not set, the client ID and secret are read from the Sentinel Hub configuration file located at
+        ~/.config/sentinelhub/config.toml.
+
+        Args:
+            profile (str): The profile name to use for retrieving the client ID and secret.
+        """
+        if os.environ.get("SH_CLIENT_ID") is not None and os.environ.get("SH_CLIENT_SECRET") is not None:
+            self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
+        else:
+            with open(Path().home() / ".config" / "sentinelhub" / "config.toml") as configfile:
+                sh_config = toml.load(configfile)[profile]
+            self.client = OAuth2Session(sh_config["sh_client_id"], sh_config["sh_client_secret"])
+        self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
+
+    def get_token(self) -> None:
+        if self.client.token.is_expired():
+            self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
+
+    def post(self, *args, **kwargs):
+        self.get_token()
+        return self.client.post(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self.get_token()
+        return self.client.delete(*args, **kwargs)
+
+    def get(self, *args, **kwargs):
+        self.get_token()
+        return self.client.get(*args, **kwargs)
+
+
 class BYOC:
-    def __init__(self, bucket_name, folder_name, sh_client, byoc_id=None) -> None:
+    def __init__(self, bucket_name: str, folder_name: str, sh_client: SHClient, byoc_id: str | None = None) -> None:
         self.folder_name = folder_name
         self.bucket_name = bucket_name
         self.client = sh_client
         self.byoc_id = byoc_id
         self.url = "https://services.sentinel-hub.com/api/v1/byoc/collections"
 
-    def create_byoc(self):
+    def create_byoc(self) -> str:
         new_collection = {"name": self.folder_name, "s3Bucket": self.bucket_name}
         byoc = self.client.post(self.url, json=new_collection)
         byoc.raise_for_status()
         self.byoc_id = byoc.json()["data"]["id"]
         return self.byoc_id
 
-    def ingest_tile(self, sensing_time):
+    def ingest_tile(self, sensing_time: datetime.date) -> None:
         tile_json = {"path": f"{self.folder_name}/(BAND).tif", "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z"}
         try:
             tile_request = self.client.post(f"{self.url}/{self.byoc_id}/tiles", json=tile_json)
@@ -121,34 +154,7 @@ class BYOC:
                 )
         print("... Ingested")
 
-    def delete(self):
+    def delete(self) -> None:
         """Delete the BYOC Collection"""
         delete = self.client.delete(f"{self.url}/{self.byoc_id}")
         delete.raise_for_status()
-
-
-class SHClient:
-    def __init__(self, profile="default-profile"):
-        if os.environ.get("SH_CLIENT_ID") is not None and os.environ("SH_CLIENT_SECRET") is not None:
-            self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
-        else:
-            with open(Path().home() / ".config" / "sentinelhub" / "config.toml") as configfile:
-                sh_config = toml.load(configfile)[profile]
-            self.client = OAuth2Session(sh_config["sh_client_id"], sh_config["sh_client_secret"])
-        self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
-
-    def get_token(self):
-        if self.client.token.is_expired():
-            self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
-
-    def post(self, *args, **kwargs):
-        self.get_token()
-        return self.client.post(*args, **kwargs)
-
-    def delete(self, *args, **kwargs):
-        self.get_token()
-        return self.client.delete(*args, **kwargs)
-
-    def get(self, *args, **kwargs):
-        self.get_token()
-        return self.client.get(*args, **kwargs)

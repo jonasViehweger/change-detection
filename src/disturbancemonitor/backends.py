@@ -14,13 +14,14 @@ from rasterio.io import MemoryFile
 from rasterio.session import AWSSession
 
 from .cog import write_metric, write_models, write_monitor
+from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
 
 class Backend:
-    def __init__(self, monitor_params):
+    def __init__(self, monitor_params: MonitorParameters) -> None:
         self.monitor_params = monitor_params
 
     def init_model(self):
@@ -71,17 +72,32 @@ class Backend:
         raise NotImplementedError
 
 
+def prepare_evalscript(monitor_params: MonitorParameters, path: Path | str) -> str:
+    with open(path) as src:
+        evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
+    eval_config = {
+        "HARMONICS": monitor_params.harmonics,
+        "DATASOURCE": monitor_params.datasource,
+        "INPUT": monitor_params.signal,
+        "SENSITIVITY": monitor_params.sensitivity,
+        "BOUND": monitor_params.boundary,
+    }
+    split_config = evalscript.split("// CONFIG")
+    split_config[1] = json.dumps(eval_config) + ";"
+    return "\n".join(split_config)
+
+
 class ProcessAPI(Backend):
     def __init__(
         self,
-        monitor_params,
-        byoc_id=None,
-        s3_profile=None,
-        sh_profile="default-profile",
-        bucket_name=None,
-        folder_name=None,
-        rollback=True,
-    ):
+        monitor_params: MonitorParameters,
+        byoc_id: str | None = None,
+        s3_profile: str | None = None,
+        sh_profile: str = "default-profile",
+        bucket_name: str | None = None,
+        folder_name: str | None = None,
+        rollback: bool = True,
+    ) -> None:
         self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
         self.folder_name = folder_name or (monitor_params.name).lower()
@@ -102,7 +118,7 @@ class ProcessAPI(Backend):
         }
         return copy(subset_dict)
 
-    def init_model(self):
+    def init_model(self) -> None:
         with ResourceManager(rollback=self.rollback) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
@@ -140,7 +156,7 @@ class ProcessAPI(Backend):
                 write_metric(memfile, self.s3)
             self.monitor_params.state = "INITIALIZED"
 
-    def compute_models(self):
+    def compute_models(self) -> bytes:
         beta_data = [
             {
                 "dataFilter": {
@@ -164,7 +180,7 @@ class ProcessAPI(Backend):
             raise
         return beta.content
 
-    def compute_metric(self):
+    def compute_metric(self) -> bytes:
         sigma_data = [
             {
                 "dataFilter": {
@@ -199,7 +215,7 @@ class ProcessAPI(Backend):
             raise
         return sigma.content
 
-    def base_request(self, data: list, evalscript: str):
+    def base_request(self, data: list, evalscript: str) -> dict:
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
         return {
             "input": {"bounds": {"geometry": self.monitor_params.geometry, "properties": {"crs": crs}}, "data": data},
@@ -211,7 +227,7 @@ class ProcessAPI(Backend):
             "evalscript": evalscript,
         }
 
-    def monitor(self, end: datetime.date | None = None):
+    def monitor(self, end: datetime.date | None = None) -> None:
         if end is None:
             end = datetime.date.today()
         start = self.monitor_params.last_monitored
@@ -261,25 +277,10 @@ class ProcessAPI(Backend):
         self.dump()
 
 
-def prepare_evalscript(monitor_params, path):
-    with open(path) as src:
-        evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
-    eval_config = {
-        "HARMONICS": monitor_params.harmonics,
-        "DATASOURCE": monitor_params.datasource,
-        "INPUT": monitor_params.signal,
-        "SENSITIVITY": monitor_params.sensitivity,
-        "BOUND": monitor_params.boundary,
-    }
-    split_config = evalscript.split("// CONFIG")
-    split_config[1] = json.dumps(eval_config) + ";"
-    return "\n".join(split_config)
-
-
 class AsyncAPI(Backend):
     def __init__(
         self,
-        monitor_params,
+        monitor_params: MonitorParameters,
         bucket_name=None,
         folder_name=None,
         byoc_id=None,
