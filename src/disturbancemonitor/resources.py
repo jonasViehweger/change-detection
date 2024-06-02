@@ -3,14 +3,15 @@ import os
 from contextlib import suppress
 from functools import wraps
 from io import BytesIO
+from pathlib import Path
 from time import sleep
 
 import boto3
 import boto3.session
 import s3fs
-import xarray as xr
+import toml
 from authlib.integrations.requests_client import OAuth2Session
-from rasterio.io import MemoryFile
+from botocore.exceptions import ClientError
 from requests.exceptions import HTTPError
 
 
@@ -74,16 +75,11 @@ class S3:
 
     def delete(self):
         """"""
-        try:
+        with suppress(FileNotFoundError):
             self.s3fs.delete(f"s3://{self.bucket_name}/{self.folder_name}", recursive=True)
-        except FileNotFoundError:
-            pass
         # try to delete the bucket if its empty
-        try:
+        with suppress(ClientError):
             self.client.delete_bucket(Bucket=self.bucket_name)
-        except IOError:
-            pass
-
 
 
 class BYOC:
@@ -119,7 +115,7 @@ class BYOC:
             status = tile["data"]["status"]
             if status == "INGESTED":
                 break
-            elif status == "FAILED":
+            if status == "FAILED":
                 raise RuntimeError(
                     f'Ingestion of tile failed: {tile["data"]["additionalData"]["failedIngestionCause"]}'
                 )
@@ -133,8 +129,12 @@ class BYOC:
 
 class SHClient:
     def __init__(self, profile="default-profile"):
-        # TODO: make profile work.
-        self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
+        if os.environ.get("SH_CLIENT_ID") is not None and os.environ("SH_CLIENT_SECRET") is not None:
+            self.client = OAuth2Session(os.environ["SH_CLIENT_ID"], os.environ["SH_CLIENT_SECRET"])
+        else:
+            with open(Path().home() / ".config" / "sentinelhub" / "config.toml") as configfile:
+                sh_config = toml.load(configfile)[profile]
+            self.client = OAuth2Session(sh_config["sh_client_id"], sh_config["sh_client_secret"])
         self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
 
     def get_token(self):

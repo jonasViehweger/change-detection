@@ -4,19 +4,17 @@ import random
 import string
 from copy import copy
 from dataclasses import asdict
-from io import BytesIO
 from pathlib import Path
 from time import sleep
 
 import boto3
-import numpy as np
 import rasterio
 import toml
-from rasterio.session import AWSSession
 from rasterio.io import MemoryFile
+from rasterio.session import AWSSession
 
-from .resources import BYOC, S3, ResourceManager, SHClient
 from .cog import write_metric, write_models, write_monitor
+from .resources import BYOC, S3, ResourceManager, SHClient
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 
@@ -24,12 +22,11 @@ CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 class Backend:
     def __init__(self, monitor_params):
         self.monitor_params = monitor_params
-        pass
 
     def init_model(self):
         raise NotImplementedError
 
-    def monitor(self, end_date=datetime.date.today()):
+    def monitor(self, end: datetime.date | None = None):
         """
         Will automatically monitor from `last_monitored` to `end_date`
         """
@@ -46,7 +43,7 @@ class Backend:
 
         # Get the saved toml if it already exists:
         if (toml_path).exists():
-            with open(toml_path, "r") as configfile:
+            with open(toml_path) as configfile:
                 config = toml.load(configfile)
         else:
             config = {}
@@ -71,7 +68,7 @@ class Backend:
         """
         Deletes all resources that were created by the monitor
         """
-        pass
+        raise NotImplementedError
 
 
 class ProcessAPI(Backend):
@@ -80,18 +77,20 @@ class ProcessAPI(Backend):
         monitor_params,
         byoc_id=None,
         s3_profile=None,
+        sh_profile="default-profile",
         bucket_name=None,
         folder_name=None,
         rollback=True,
-        **kwargs,
     ):
         self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
-        self.folder_name = folder_name or (monitor_params.name + "-" + self.random_id).lower()
+        self.folder_name = folder_name or (monitor_params.name).lower()
+        self.s3_profile = s3_profile
+        self.sh_profile = sh_profile
+        self.client = SHClient(self.sh_profile)
         self.byoc_id = byoc_id
-        self.client = SHClient()
         self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
-        self.s3 = S3(self.bucket_name, self.folder_name, s3_profile)
+        self.s3 = S3(self.bucket_name, self.folder_name, self.s3_profile)
         self.rollback = rollback
 
         self.url = "https://services.sentinel-hub.com/api/v1/process"
@@ -99,9 +98,7 @@ class ProcessAPI(Backend):
 
     def as_dict(self):
         subset_dict = {
-            k: v
-            for k, v in self.__dict__.items()
-            if k not in ["client", "url", "monitor_params", "byoc", "s3"]
+            k: v for k, v in self.__dict__.items() if k not in ["client", "url", "monitor_params", "byoc", "s3"]
         }
         return copy(subset_dict)
 
@@ -130,7 +127,7 @@ class ProcessAPI(Backend):
             print("2/6 Fitting model")
             models = self.compute_models()
             print("3/6 Writing model to bucket")
-            with MemoryFile(models) as memfile: 
+            with MemoryFile(models) as memfile:
                 write_models(memfile, self.s3)
             print("4/6 Ingesting model to SH")
             self.byoc_id = self.byoc.create_byoc()
@@ -139,8 +136,8 @@ class ProcessAPI(Backend):
             print("5/6 Computing metric")
             metrics = self.compute_metric()
             print("6/6 Writing metric to bucket")
-            with MemoryFile(metrics) as memfile: 
-                write_models(memfile, self.s3)
+            with MemoryFile(metrics) as memfile:
+                write_metric(memfile, self.s3)
             self.monitor_params.state = "INITIALIZED"
 
     def compute_models(self):
@@ -157,10 +154,7 @@ class ProcessAPI(Backend):
             }
         ]
 
-        beta_request = self.base_request(
-            beta_data, 
-            prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs")
-        )
+        beta_request = self.base_request(beta_data, prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs"))
         beta = self.client.post(self.url, json=beta_request)
 
         try:
@@ -187,7 +181,7 @@ class ProcessAPI(Backend):
                 "dataFilter": {
                     "timeRange": {
                         "from": f"{self.monitor_params.fit_start.isoformat()}T00:00:00Z",
-                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z",
                     }
                 },
                 "type": f"byoc-{self.byoc_id}",
@@ -195,10 +189,7 @@ class ProcessAPI(Backend):
             },
         ]
 
-        sigma_request = self.base_request(
-            sigma_data, 
-            prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs")
-        )
+        sigma_request = self.base_request(sigma_data, prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs"))
 
         sigma = self.client.post(self.url, json=sigma_request)
         try:
@@ -220,15 +211,14 @@ class ProcessAPI(Backend):
             "evalscript": evalscript,
         }
 
-    def monitor(self, end: datetime.date = datetime.date.today()):
+    def monitor(self, end: datetime.date | None = None):
+        if end is None:
+            end = datetime.date.today()
         start = self.monitor_params.last_monitored
         monitor_data = [
             {
                 "dataFilter": {
-                    "timeRange": {
-                        "from": f"{start.isoformat()}T00:00:00Z", 
-                        "to": f"{end.isoformat()}T23:59:59Z"
-                    },
+                    "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": self.monitor_params.datasource_id,
@@ -237,8 +227,8 @@ class ProcessAPI(Backend):
             {
                 "dataFilter": {
                     "timeRange": {
-                        "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z", 
-                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z"
+                        "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z",
                     }
                 },
                 "type": f"byoc-{self.byoc_id}",
@@ -247,8 +237,7 @@ class ProcessAPI(Backend):
         ]
 
         monitor_request = self.base_request(
-            monitor_data, 
-            prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
+            monitor_data, prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
         )
         monitor_data = self.client.post(self.url, json=monitor_request)
         try:
@@ -257,8 +246,8 @@ class ProcessAPI(Backend):
             print(monitor_data.content)
             raise
 
-        with MemoryFile(monitor_data.content) as memfile: 
-            write_models(memfile, self.s3)
+        with MemoryFile(monitor_data.content) as memfile:
+            write_monitor(memfile, self.s3)
         self.monitor_params.last_monitored = end
         self.dump()
 
@@ -271,19 +260,21 @@ class ProcessAPI(Backend):
         self.monitor_params.state = "DELETED"
         self.dump()
 
+
 def prepare_evalscript(monitor_params, path):
-    with open(path, "r") as src:
+    with open(path) as src:
         evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
     eval_config = {
         "HARMONICS": monitor_params.harmonics,
         "DATASOURCE": monitor_params.datasource,
-        "INPUT": monitor_params.inputs[0],
+        "INPUT": monitor_params.signal,
         "SENSITIVITY": monitor_params.sensitivity,
         "BOUND": monitor_params.boundary,
     }
     split_config = evalscript.split("// CONFIG")
     split_config[1] = json.dumps(eval_config) + ";"
     return "\n".join(split_config)
+
 
 class AsyncAPI(Backend):
     def __init__(
@@ -292,20 +283,21 @@ class AsyncAPI(Backend):
         bucket_name=None,
         folder_name=None,
         byoc_id=None,
-        sh_profile=None,
+        sh_profile="default-profile",
         s3_profile=None,
         async_profile=None,
         role_arn=None,
         rollback=True,
-        **kwargs,
     ):
         self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
-        self.folder_name = folder_name or (monitor_params.name + "-" + self.random_id).lower()
-        self.client = SHClient()
+        self.folder_name = folder_name or (monitor_params.name).lower()
+        self.s3_profile = s3_profile
+        self.sh_profile = sh_profile
+        self.client = SHClient(self.sh_profile)
         self.byoc_id = byoc_id
         self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
-        self.s3 = S3(self.bucket_name, self.folder_name, s3_profile)
+        self.s3 = S3(self.bucket_name, self.folder_name, self.s3_profile)
         self.async_profile = async_profile
         self.role_arn = role_arn
         self.rollback = rollback
@@ -315,9 +307,7 @@ class AsyncAPI(Backend):
 
     def as_dict(self):
         subset_dict = {
-            k: v
-            for k, v in self.__dict__.items()
-            if k not in ["client", "url", "monitor_params", "byoc", "s3"]
+            k: v for k, v in self.__dict__.items() if k not in ["client", "url", "monitor_params", "byoc", "s3"]
         }
         return copy(subset_dict)
 
@@ -406,10 +396,7 @@ class AsyncAPI(Backend):
             }
         ]
 
-        beta_request = self.base_request(
-            beta_data, 
-            prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs")
-        )
+        beta_request = self.base_request(beta_data, prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs"))
         beta = self.client.post(self.url, json=beta_request)
         beta.raise_for_status()
         async_id = beta.json()["id"]
@@ -441,10 +428,7 @@ class AsyncAPI(Backend):
             },
         ]
 
-        sigma_request = self.base_request(
-            sigma_data, 
-            prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs")
-        )
+        sigma_request = self.base_request(sigma_data, prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs"))
         sigma = self.client.post(self.url, json=sigma_request)
         sigma.raise_for_status()
         async_id = sigma.json()["id"]
@@ -471,15 +455,14 @@ class AsyncAPI(Backend):
             "evalscript": evalscript,
         }
 
-    def monitor(self, end: datetime.date = datetime.date.today()):
+    def monitor(self, end: datetime.date | None = None):
+        if end is None:
+            end = datetime.date.today()
         start = self.monitor_params.last_monitored
         monitor_data = [
             {
                 "dataFilter": {
-                    "timeRange": {
-                        "from": f"{start.isoformat()}T00:00:00Z", 
-                        "to": f"{end.isoformat()}T23:59:59Z"
-                    },
+                    "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": self.monitor_params.datasource_id,
@@ -488,8 +471,8 @@ class AsyncAPI(Backend):
             {
                 "dataFilter": {
                     "timeRange": {
-                        "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z", 
-                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z"
+                        "from": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
+                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z",
                     }
                 },
                 "type": f"byoc-{self.byoc_id}",
@@ -498,8 +481,7 @@ class AsyncAPI(Backend):
         ]
 
         monitor_request = self.base_request(
-            monitor_data, 
-            prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
+            monitor_data, prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
         )
         monitor_data = self.client.post(self.url, json=monitor_request)
         try:
