@@ -19,7 +19,7 @@ for (const [key, value] of Object.entries(input)) {
 	out.push({
 		input: {[key]: value},
 		output: {
-			dir: '.',
+			dir: '../src/disturbancemonitor/data',
 			format: 'cjs',
 			strict: false,
 			entryFileNames: "[name].cjs",

@@ -4,6 +4,7 @@ import random
 import string
 from copy import copy
 from dataclasses import asdict
+from importlib.resources import files
 from pathlib import Path
 from time import sleep
 
@@ -18,6 +19,7 @@ from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
+DATA_PATH = files("disturbancemonitor.data")
 
 
 class Backend:
@@ -130,7 +132,11 @@ class ProcessAPI(Backend):
                             "Sid": "Sentinel Hub permissions",
                             "Effect": "Allow",
                             "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                            "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
+                            "Action": [
+                                "s3:GetBucketLocation",
+                                "s3:ListBucket",
+                                "s3:GetObject",
+                            ],
                             "Resource": [
                                 f"arn:aws:s3:::{self.bucket_name}",
                                 f"arn:aws:s3:::{self.bucket_name}/*",
@@ -170,7 +176,10 @@ class ProcessAPI(Backend):
             }
         ]
 
-        beta_request = self.base_request(beta_data, prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs"))
+        beta_request = self.base_request(
+            beta_data,
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("beta.cjs")),
+        )
         beta = self.client.post(self.url, json=beta_request)
 
         try:
@@ -205,7 +214,10 @@ class ProcessAPI(Backend):
             },
         ]
 
-        sigma_request = self.base_request(sigma_data, prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs"))
+        sigma_request = self.base_request(
+            sigma_data,
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("rmse.cjs")),
+        )
 
         sigma = self.client.post(self.url, json=sigma_request)
         try:
@@ -218,7 +230,13 @@ class ProcessAPI(Backend):
     def base_request(self, data: list, evalscript: str) -> dict:
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
         return {
-            "input": {"bounds": {"geometry": self.monitor_params.geometry, "properties": {"crs": crs}}, "data": data},
+            "input": {
+                "bounds": {
+                    "geometry": self.monitor_params.geometry,
+                    "properties": {"crs": crs},
+                },
+                "data": data,
+            },
             "output": {
                 "resx": self.monitor_params.resolution,
                 "resy": self.monitor_params.resolution,
@@ -234,7 +252,10 @@ class ProcessAPI(Backend):
         monitor_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
+                    "timeRange": {
+                        "from": f"{start.isoformat()}T00:00:00Z",
+                        "to": f"{end.isoformat()}T23:59:59Z",
+                    },
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": self.monitor_params.datasource_id,
@@ -253,7 +274,8 @@ class ProcessAPI(Backend):
         ]
 
         monitor_request = self.base_request(
-            monitor_data, prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
+            monitor_data,
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("predict.cjs")),
         )
         monitor_data = self.client.post(self.url, json=monitor_request)
         try:
@@ -326,7 +348,11 @@ class AsyncAPI(Backend):
                             "Sid": "Sentinel Hub permissions",
                             "Effect": "Allow",
                             "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                            "Action": ["s3:GetBucketLocation", "s3:ListBucket", "s3:GetObject"],
+                            "Action": [
+                                "s3:GetBucketLocation",
+                                "s3:ListBucket",
+                                "s3:GetObject",
+                            ],
                             "Resource": [
                                 f"arn:aws:s3:::{self.bucket_name}",
                                 f"arn:aws:s3:::{self.bucket_name}/*",
@@ -397,7 +423,10 @@ class AsyncAPI(Backend):
             }
         ]
 
-        beta_request = self.base_request(beta_data, prepare_evalscript(self.monitor_params, "./evalscripts/beta.cjs"))
+        beta_request = self.base_request(
+            beta_data,
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("beta.cjs")),
+        )
         beta = self.client.post(self.url, json=beta_request)
         beta.raise_for_status()
         async_id = beta.json()["id"]
@@ -429,7 +458,10 @@ class AsyncAPI(Backend):
             },
         ]
 
-        sigma_request = self.base_request(sigma_data, prepare_evalscript(self.monitor_params, "./evalscripts/rmse.cjs"))
+        sigma_request = self.base_request(
+            sigma_data,
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("rmse.cjs")),
+        )
         sigma = self.client.post(self.url, json=sigma_request)
         sigma.raise_for_status()
         async_id = sigma.json()["id"]
@@ -440,7 +472,13 @@ class AsyncAPI(Backend):
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
         credentials = boto3.session.Session(profile_name=self.async_profile).get_credentials()
         return {
-            "input": {"bounds": {"geometry": self.monitor_params.geometry, "properties": {"crs": crs}}, "data": data},
+            "input": {
+                "bounds": {
+                    "geometry": self.monitor_params.geometry,
+                    "properties": {"crs": crs},
+                },
+                "data": data,
+            },
             "output": {
                 "resx": self.monitor_params.resolution,
                 "resy": self.monitor_params.resolution,
@@ -463,7 +501,10 @@ class AsyncAPI(Backend):
         monitor_data = [
             {
                 "dataFilter": {
-                    "timeRange": {"from": f"{start.isoformat()}T00:00:00Z", "to": f"{end.isoformat()}T23:59:59Z"},
+                    "timeRange": {
+                        "from": f"{start.isoformat()}T00:00:00Z",
+                        "to": f"{end.isoformat()}T23:59:59Z",
+                    },
                     "mosaickingOrder": "leastRecent",
                 },
                 "type": self.monitor_params.datasource_id,
@@ -482,7 +523,8 @@ class AsyncAPI(Backend):
         ]
 
         monitor_request = self.base_request(
-            monitor_data, prepare_evalscript(self.monitor_params, "./evalscripts/predict_ccdc.cjs")
+            monitor_data,
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("predict.cjs")),
         )
         monitor_data = self.client.post(self.url, json=monitor_request)
         try:

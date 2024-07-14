@@ -10,10 +10,6 @@ dependencies = [
   "toml"
 ]
 
-[tool.black]
-line-length = 120
-preview = true
-
 [tool.ruff]
 line-length = 120
 target-version = "py310"

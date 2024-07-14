@@ -2,7 +2,7 @@ import makeRegression from "../utils/makeRegression";
 import dot from "../utils/dot";
 import { dataSources } from "../utils/datasources";
 
-const c = 
+const c =
 // CONFIG
 {
   HARMONICS: 2,

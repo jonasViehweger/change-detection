@@ -140,17 +140,17 @@ var gammaOverride; export class DefaultVisualizer {
 		let v = this.gain * (val - this.minValue) * this.factor + this.offset
 		/**
 		 * RGB manipulation
-		 * 
+		 *
 		 * This is a temporary solution for image manipulation.
 		 * Permanent solution will be implemented on frontend no later than the end of september 2019.
 		 * After frontend implementation is completed, this should be removed.
-		 * 
+		 *
 		 * Used by EO Browser for correcting images of layers that use DefaultVisualizer.
-		 * 
-		 * rangeOverrides is an array of 3 arrays which contain lower and upper range value and 
+		 *
+		 * rangeOverrides is an array of 3 arrays which contain lower and upper range value and
 		 * must be set in evalscriptoverrides in order to be used here.
 		 * Lowest possible value is 0 and highest possible value is 1.
-		 * 
+		 *
 		 * Visualizer's process() must be called with both value and index: process(value, index).
 		 * In most cases the map() will be used on components, example: components.map((v, i) => process(v, i)).
 		 */
@@ -206,17 +206,17 @@ export class HighlightCompressVisualizer {
 		let v = this.gain * (val - this.minValue) * this.factor + this.offset
 		/**
 		 * RGB manipulation
-		 * 
+		 *
 		 * This is a temporary solution for image manipulation.
 		 * Permanent solution will be implemented on frontend no later than september 2019.
 		 * After frontend implementation is completed, this should be removed.
-		 * 
+		 *
 		 * Used by EO Browser for correcting images of layers that use DefaultVisualizer (e.g. S2 L2A True color).
-		 * 
-		 * rangeOverrides is an array of 3 arrays which contain lower and upper range value and 
+		 *
+		 * rangeOverrides is an array of 3 arrays which contain lower and upper range value and
 		 * must be set in evalscriptoverrides in order to be used here.
 		 * Lowest possible value is 0 and highest possible value is 1.
-		 * 
+		 *
 		 * Visualizer's process() must be called with both value and index: process(value, index).
 		 * In most cases the map() will be used on components, example: components.map((v, i) => process(v, i)).
 		 */

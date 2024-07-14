@@ -26,7 +26,7 @@ class ResourceManager:
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val):
+    def __exit__(self, exc_type, exc_val, tb):
         if exc_type:
             print(f"Exception occurred: {exc_val}. \nRolling back resources.")
             for resource in reversed(self.resources):
@@ -116,7 +116,13 @@ class SHClient:
 
 
 class BYOC:
-    def __init__(self, bucket_name: str, folder_name: str, sh_client: SHClient, byoc_id: str | None = None) -> None:
+    def __init__(
+        self,
+        bucket_name: str,
+        folder_name: str,
+        sh_client: SHClient,
+        byoc_id: str | None = None,
+    ) -> None:
         self.folder_name = folder_name
         self.bucket_name = bucket_name
         self.client = sh_client
@@ -131,7 +137,10 @@ class BYOC:
         return self.byoc_id
 
     def ingest_tile(self, sensing_time: datetime.date) -> None:
-        tile_json = {"path": f"{self.folder_name}/(BAND).tif", "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z"}
+        tile_json = {
+            "path": f"{self.folder_name}/(BAND).tif",
+            "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z",
+        }
         try:
             tile_request = self.client.post(f"{self.url}/{self.byoc_id}/tiles", json=tile_json)
             tile_request.raise_for_status()

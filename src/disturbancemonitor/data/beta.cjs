@@ -168,7 +168,7 @@ var dataSources = {
     }
 };
 
-const c = 
+const c =
 // CONFIG
 {
   HARMONICS: 2,
