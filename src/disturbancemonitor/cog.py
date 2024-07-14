@@ -1,17 +1,15 @@
+import os
 from io import BytesIO
 
-import rasterio
 import numpy as np
+import rasterio
 
-_COG_PROFILE = {
-    "driver": "COG", 
-    "compress": "DEFLATE", 
-    "blockxsize": 1024, 
-    "blockysize": 1024, 
-    "tiled": True
-}
+from .resources import S3
 
-def write_metric(in_path, s3_resource):
+_COG_PROFILE = {"driver": "COG", "compress": "DEFLATE", "blockxsize": 1024, "blockysize": 1024, "tiled": True}
+
+
+def write_metric(in_path: str | os.PathLike, s3_resource: S3) -> None:
     with rasterio.open(in_path) as src:
         profile = src.profile
         profile.update(**_COG_PROFILE)
@@ -21,7 +19,8 @@ def write_metric(in_path, s3_resource):
                 dst.write(src.read())
             s3_resource.write_binary(f"{s3_resource.root}/metric.tif", out)
 
-def write_monitor(in_path, s3_resource):
+
+def write_monitor(in_path: str | os.PathLike, s3_resource: S3) -> None:
     with rasterio.open(in_path) as src:
         profile = src.profile
         profile.update(count=1, **_COG_PROFILE)
@@ -35,7 +34,8 @@ def write_monitor(in_path, s3_resource):
                 dst.write(src.read(2), 1)
             s3_resource.write_binary(f"{s3_resource.root}/process.tif", out)
 
-def write_models(in_path, s3_resource):
+
+def write_models(in_path: str | os.PathLike, s3_resource: S3) -> None:
     with rasterio.open(in_path) as src:
         profile = src.profile
         profile.update(**_COG_PROFILE)

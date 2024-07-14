@@ -5,6 +5,8 @@ from contextlib import suppress
 from io import BytesIO
 from pathlib import Path
 from time import sleep
+from types import TracebackType
+from typing import Literal
 
 import boto3
 import boto3.session
@@ -12,21 +14,29 @@ import s3fs
 import toml
 from authlib.integrations.requests_client import OAuth2Session
 from botocore.exceptions import ClientError
+from requests import Response
 from requests.exceptions import HTTPError
+
+
+class Resource:
+    def delete(self) -> None:
+        raise NotImplementedError("Method delete() must be implemented in subclass.")
 
 
 class ResourceManager:
     def __init__(self, rollback: bool = True):
-        self.resources = []
+        self.resources: list[Resource] = []
         self.rollback = rollback
 
-    def add_resource(self, resource):
+    def add_resource(self, resource: Resource) -> None:
         self.resources.append(resource)
 
-    def __enter__(self):
+    def __enter__(self) -> "ResourceManager":
         return self
 
-    def __exit__(self, exc_type, exc_val, tb):
+    def __exit__(
+        self, exc_type: BaseException | None, exc_val: BaseException | None, tb: TracebackType | None
+    ) -> Literal[False]:
         if exc_type:
             print(f"Exception occurred: {exc_val}. \nRolling back resources.")
             for resource in reversed(self.resources):
@@ -35,7 +45,7 @@ class ResourceManager:
         return False  # Propagate the exception
 
 
-class S3:
+class S3(Resource):
     def __init__(self, bucket_name: str, folder_name: str, profile: str = "default") -> None:
         """
         Initializes an S3 object.
@@ -102,20 +112,20 @@ class SHClient:
         if self.client.token.is_expired():
             self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
 
-    def post(self, *args, **kwargs):
+    def post(self, *args, **kwargs) -> Response:
         self.get_token()
         return self.client.post(*args, **kwargs)
 
-    def delete(self, *args, **kwargs):
+    def delete(self, *args, **kwargs) -> Response:
         self.get_token()
         return self.client.delete(*args, **kwargs)
 
-    def get(self, *args, **kwargs):
+    def get(self, *args, **kwargs) -> Response:
         self.get_token()
         return self.client.get(*args, **kwargs)
 
 
-class BYOC:
+class BYOC(Resource):
     def __init__(
         self,
         bucket_name: str,
@@ -129,7 +139,7 @@ class BYOC:
         self.byoc_id = byoc_id
         self.url = "https://services.sentinel-hub.com/api/v1/byoc/collections"
 
-    def create_byoc(self) -> str:
+    def create_byoc(self) -> str | None:
         new_collection = {"name": self.folder_name, "s3Bucket": self.bucket_name}
         byoc = self.client.post(self.url, json=new_collection)
         byoc.raise_for_status()

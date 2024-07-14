@@ -2,9 +2,11 @@ import datetime
 import json
 import random
 import string
+from collections.abc import Callable
 from copy import copy
 from dataclasses import asdict
 from importlib.resources import files
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from time import sleep
 
@@ -26,19 +28,19 @@ class Backend:
     def __init__(self, monitor_params: MonitorParameters) -> None:
         self.monitor_params = monitor_params
 
-    def init_model(self):
+    def init_model(self) -> None:
         raise NotImplementedError
 
-    def monitor(self, end: datetime.date | None = None):
+    def monitor(self, end: datetime.date | None = None) -> None:
         """
         Will automatically monitor from `last_monitored` to `end_date`
         """
         raise NotImplementedError
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         raise NotImplementedError
 
-    def dump(self):
+    def dump(self) -> None:
         geom_out = CONFIG_PATH / "geoms"
         CONFIG_PATH.mkdir(parents=True, exist_ok=True)
         geom_out.mkdir(parents=True, exist_ok=True)
@@ -67,15 +69,15 @@ class Backend:
         with open(geom_out / (name + ".geojson"), "w") as fs:
             json.dump(geometry, fs)
 
-    def delete(self):
+    def delete(self) -> None:
         """
         Deletes all resources that were created by the monitor
         """
         raise NotImplementedError
 
 
-def prepare_evalscript(monitor_params: MonitorParameters, path: Path | str) -> str:
-    with open(path) as src:
+def prepare_evalscript(monitor_params: MonitorParameters, path: Path | Traversable) -> str:
+    with path.open() as src:
         evalscript = src.read().split("// DISCARD FROM HERE", 1)[0]
     eval_config = {
         "HARMONICS": monitor_params.harmonics,
@@ -94,7 +96,7 @@ class ProcessAPI(Backend):
         self,
         monitor_params: MonitorParameters,
         byoc_id: str | None = None,
-        s3_profile: str | None = None,
+        s3_profile: str = "default",
         sh_profile: str = "default-profile",
         bucket_name: str | None = None,
         folder_name: str | None = None,
@@ -114,7 +116,7 @@ class ProcessAPI(Backend):
         self.url = "https://services.sentinel-hub.com/api/v1/process"
         super().__init__(monitor_params)
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         subset_dict = {
             k: v for k, v in self.__dict__.items() if k not in ["client", "url", "monitor_params", "byoc", "s3"]
         }
@@ -249,7 +251,7 @@ class ProcessAPI(Backend):
         if end is None:
             end = datetime.date.today()
         start = self.monitor_params.last_monitored
-        monitor_data = [
+        monitor_data_json = [
             {
                 "dataFilter": {
                     "timeRange": {
@@ -274,7 +276,7 @@ class ProcessAPI(Backend):
         ]
 
         monitor_request = self.base_request(
-            monitor_data,
+            monitor_data_json,
             prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("predict.cjs")),
         )
         monitor_data = self.client.post(self.url, json=monitor_request)
@@ -289,7 +291,7 @@ class ProcessAPI(Backend):
         self.monitor_params.last_monitored = end
         self.dump()
 
-    def delete(self):
+    def delete(self) -> None:
         """
         Deletes the S3 Folder for the monitor and the SH BYOC collection
         """
@@ -303,15 +305,15 @@ class AsyncAPI(Backend):
     def __init__(
         self,
         monitor_params: MonitorParameters,
-        bucket_name=None,
-        folder_name=None,
-        byoc_id=None,
-        sh_profile="default-profile",
-        s3_profile=None,
-        async_profile=None,
-        role_arn=None,
-        rollback=True,
-    ):
+        bucket_name: str | None = None,
+        folder_name: str | None = None,
+        byoc_id: str | None = None,
+        sh_profile: str = "default-profile",
+        s3_profile: str = "default",
+        async_profile: str | None = None,
+        role_arn: str | None = None,
+        rollback: bool = True,
+    ) -> None:
         self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
         self.folder_name = folder_name or (monitor_params.name).lower()
@@ -328,13 +330,13 @@ class AsyncAPI(Backend):
         self.url = "https://services.sentinel-hub.com/api/v1/async/process"
         super().__init__(monitor_params)
 
-    def as_dict(self):
+    def as_dict(self) -> dict:
         subset_dict = {
             k: v for k, v in self.__dict__.items() if k not in ["client", "url", "monitor_params", "byoc", "s3"]
         }
         return copy(subset_dict)
 
-    def init_model(self):
+    def init_model(self) -> None:
         with ResourceManager(
             rollback=self.rollback,
         ) as manager:
@@ -383,7 +385,7 @@ class AsyncAPI(Backend):
             self.write_async(async_id, write_metric)
             self.monitor_params.state = "INITIALIZED"
 
-    def wait_for_async(self, async_id):
+    def wait_for_async(self, async_id: str) -> None:
         print("... Waiting for async request to finish")
         while True:
             sleep(5)
@@ -401,7 +403,7 @@ class AsyncAPI(Backend):
 
         print("... Finished")
 
-    def write_async(self, async_id, write_function):
+    def write_async(self, async_id: str, write_function: Callable[[str, S3], None]) -> None:
         async_out = f"{self.s3.root}/{async_id}/default.tif"
         with rasterio.Env(AWSSession(session=self.s3.session)):
             write_function(async_out, self.s3)
@@ -409,7 +411,7 @@ class AsyncAPI(Backend):
         # delete non-cog async output
         self.s3.s3fs.delete(f"{self.s3.root}/{async_id}", recursive=True)
 
-    def compute_models(self):
+    def compute_models(self) -> str:
         beta_data = [
             {
                 "dataFilter": {
@@ -433,7 +435,7 @@ class AsyncAPI(Backend):
         self.wait_for_async(async_id)
         return async_id
 
-    def compute_metric(self):
+    def compute_metric(self) -> str:
         sigma_data = [
             {
                 "dataFilter": {
@@ -468,9 +470,10 @@ class AsyncAPI(Backend):
         self.wait_for_async(async_id)
         return async_id
 
-    def base_request(self, data: list, evalscript: str):
+    def base_request(self, data: list, evalscript: str) -> dict:
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
         credentials = boto3.session.Session(profile_name=self.async_profile).get_credentials()
+        assert credentials is not None
         return {
             "input": {
                 "bounds": {
@@ -494,11 +497,11 @@ class AsyncAPI(Backend):
             "evalscript": evalscript,
         }
 
-    def monitor(self, end: datetime.date | None = None):
+    def monitor(self, end: datetime.date | None = None) -> None:
         if end is None:
             end = datetime.date.today()
         start = self.monitor_params.last_monitored
-        monitor_data = [
+        monitor_data_json = [
             {
                 "dataFilter": {
                     "timeRange": {
@@ -523,7 +526,7 @@ class AsyncAPI(Backend):
         ]
 
         monitor_request = self.base_request(
-            monitor_data,
+            monitor_data_json,
             prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("predict.cjs")),
         )
         monitor_data = self.client.post(self.url, json=monitor_request)
@@ -540,7 +543,7 @@ class AsyncAPI(Backend):
         self.monitor_params.last_monitored = end
         self.dump()
 
-    def delete(self):
+    def delete(self) -> None:
         """
         Deletes the S3 Folder for the monitor and the SH BYOC collection
         """

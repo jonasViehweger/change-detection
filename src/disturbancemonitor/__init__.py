@@ -17,11 +17,11 @@ def start_monitor(
     monitoring_start: datetime.date,
     geometry: dict,
     resolution: float = 0.001,
-    datasource: str = "ARPS",
+    datasource: Literal["S2L2A", "ARPS"] = "S2L2A",
     datasource_id: str | None = None,
     harmonics: int = 2,
-    signal: str = "NDVI",
-    metric: str = "RMSE",
+    signal: Literal["NDVI"] = "NDVI",
+    metric: Literal["RMSE"] = "RMSE",
     sensitivity: float = 5,
     boundary: float = 5,
     backend: _backend_types = "ProcessAPI",
@@ -62,6 +62,7 @@ def start_monitor(
         overwrite (bool): If an already existing monitor should be overwritten.
     """
     state = kwargs.get("state", "NOT_INITIALIZED")
+    last_monitored = kwargs.pop("last_monitored", monitoring_start)
     params = MonitorParameters(
         name=name,
         monitoring_start=monitoring_start,
@@ -75,6 +76,7 @@ def start_monitor(
         sensitivity=sensitivity,
         boundary=boundary,
         state=state,
+        last_monitored=last_monitored,
     )
     config = load_config()
     config_exists = name in config
@@ -85,11 +87,11 @@ def start_monitor(
             f"Monitor with name {name} and backend {backend} already exists. Use load_monitor('{name}',"
             f" backend='{backend}') instead."
         )
-    backend = BACKENDS[backend](params, **kwargs)
+    backend_ = BACKENDS[backend](params, **kwargs)
     if state == "NOT_INITIALIZED":
-        backend.init_model()
-        backend.dump()
-    return backend
+        backend_.init_model()
+        backend_.dump()
+    return backend_
 
 
 def load_config() -> dict:

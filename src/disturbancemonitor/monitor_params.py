@@ -9,21 +9,19 @@ datasource_ids = {"S2L2A": "sentinel-2-l2a"}
 class MonitorParameters:
     name: str
     monitoring_start: datetime.date
+    last_monitored: datetime.date
     geometry: dict
-    resolution: tuple
-    datasource: str
-    datasource_id: str = None
+    resolution: float
+    datasource: Literal["S2L2A", "ARPS"] = "S2L2A"
+    datasource_id: str | None = None
     harmonics: int = 2
     signal: Literal["NDVI"] = "NDVI"
     metric: Literal["RMSE"] = "RMSE"
-    sensitivity: int = 5
-    boundary: int = 5
+    sensitivity: float = 5
+    boundary: float = 5
     state: str = "NOT_INITIALIZED"
-    last_monitored: datetime.date = None
 
-    def __post_init__(self):
-        if self.last_monitored is None:
-            self.last_monitored = self.monitoring_start
+    def __post_init__(self) -> None:
         if self.datasource_id is None:
             self.datasource_id = datasource_ids[self.datasource]
 
