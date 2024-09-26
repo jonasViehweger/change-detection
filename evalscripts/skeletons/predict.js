@@ -51,6 +51,8 @@ function preProcessScenes(collections) {
   return collections;
 }
 
+var newDisturbed = 0;
+
 function evaluatePixel(samples, scenes) {
   const b = samples.beta[0];
   var process = b.process;
@@ -70,12 +72,17 @@ function evaluatePixel(samples, scenes) {
       const pred = dot(X, beta);
       process = updateProcessCCDC(pred, y, process, b.metric);
       if (process >= c.BOUND) {
+        newDisturbed++;
         disturbedDate = dateToInt(scenes[c.DATASOURCE].scenes.orbits[i].dateFrom);
         break;
       }
     }
   }
   return [disturbedDate, process];
+}
+
+function updateOutputMetadata(scenes, inputMetadata, outputMetadata){
+  outputMetadata.userData = { "newDisturbed":  newDisturbed }
 }
 
 function dateToInt(datetimestring) {

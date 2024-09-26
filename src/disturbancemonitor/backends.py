@@ -2,11 +2,13 @@ import datetime
 import json
 import random
 import string
+import tarfile
 from collections.abc import Callable
 from copy import copy
 from dataclasses import asdict
 from importlib.resources import files
 from importlib.resources.abc import Traversable
+from io import BytesIO
 from pathlib import Path
 from time import sleep
 
@@ -247,7 +249,7 @@ class ProcessAPI(Backend):
             "evalscript": evalscript,
         }
 
-    def monitor(self, end: datetime.date | None = None) -> None:
+    def monitor(self, end: datetime.date | None = None) -> dict:
         if end is None:
             end = datetime.date.today()
         start = self.monitor_params.last_monitored
@@ -279,17 +281,35 @@ class ProcessAPI(Backend):
             monitor_data_json,
             prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("predict.cjs")),
         )
-        monitor_data = self.client.post(self.url, json=monitor_request)
+        # Get userdata (returns number of disturbed pixels during the monitoring)
+        monitor_request["output"]["responses"].append(
+            {"identifier": "userdata", "format": {"type": "application/json"}}
+        )
+        monitor_data = self.client.post(self.url, json=monitor_request, headers={"Accept": "application/tar"})
         try:
             monitor_data.raise_for_status()
         except:
             print(monitor_data.content)
             raise
 
-        with MemoryFile(monitor_data.content) as memfile:
-            write_monitor(memfile, self.s3)
+        with tarfile.open(fileobj=BytesIO(monitor_data.content)) as tar:
+            # Find the userdata.json file
+            userdata_file = tar.extractfile("userdata.json")  # Extract it in memory
+            # Read the content of userdata.json
+            json_data = userdata_file.read().decode("utf-8")  # Decode from bytes to string
+
+            # Parse the JSON string into a dictionary
+            userdata_dict = json.loads(json_data)
+
+            # Find the userdata.json file
+            output_tif = tar.extractfile("default.tif")  # Extract it in memory
+            # Read the content of userdata.json
+            with MemoryFile(output_tif.read()) as memfile:
+                write_monitor(memfile, self.s3)
+
         self.monitor_params.last_monitored = end
         self.dump()
+        return userdata_dict
 
     def delete(self) -> None:
         """

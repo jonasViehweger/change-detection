@@ -1,6 +1,5 @@
 import datetime
 import json
-from dataclasses import dataclass, field
 from typing import Literal
 
 import toml
@@ -61,8 +60,9 @@ def start_monitor(
             10000x10000 and doesn't time out as quickly.
         overwrite (bool): If an already existing monitor should be overwritten.
     """
-    state = kwargs.get("state", "NOT_INITIALIZED")
+    state = kwargs.pop("state", "NOT_INITIALIZED")
     last_monitored = kwargs.pop("last_monitored", monitoring_start)
+    unique_id = kwargs.pop("random_id", None)  # noqa: F841
     params = MonitorParameters(
         name=name,
         monitoring_start=monitoring_start,
