@@ -1,13 +1,31 @@
 [project]
 name = "disturbancemonitor"
-version = "0.0.0"
+version = "0.1.0"
+description = "A package to monitor disturbances in satellite time series in near real time."
+readme = "README.md"
 dependencies = [
+  "numpy",
+  "rasterio<1.4", # Pinned waiting for https://github.com/rasterio/rasterio/issues/3064 to resolve
   "boto3",
-  "s3fs",
-  "xarray",
-  "rioxarray",
+  "toml",
   "authlib",
-  "toml"
+  "botocore",
+  "requests",
+  "s3fs",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+disturbancemonitor = ["data/*.cjs"]
+
+[tool.uv]
+dev-dependencies = [
+    "boto3-stubs>=1.35.10",
+    "pre-commit>=3.8.0",
+    "types-requests>=2.32.0.20240712",
+    "types-toml>=0.10.8.20240310",
 ]
 
 [tool.ruff]
@@ -44,7 +62,6 @@ lint.select = [
     "UP",  # pyupgrade
     "FA",  # checks where future import of annotations would make types nicer
 ]
-fix = true
 lint.fixable = [
     "I",     # sort imports
     "F401",  # remove redundant imports
@@ -67,43 +84,17 @@ lint.ignore = [
     "PT011", # complains for `pytest.raises(ValueError)` but we use it a lot
     "UP024", # wants to switch IOError with OSError
     "T201",  # want to print without compalaints
+    "ISC001",# complains about implicit string concatenation
 ]
-lint.per-file-ignores = { "__init__.py" = ["F401"], "conf.py" = ["FA100"] }
-
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pycache__",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv*",
-]
-
-[tool.ruff.isort]
-section-order = [
+lint.isort.section-order = [
     "future",
     "standard-library",
     "third-party",
     "first-party",
     "local-folder",
-    "notebook-utilities",
 ]
+fix = true
+
 
 [tool.nbqa.addopts]
 ruff = ["--extend-ignore=E402,T201,B015,B018,NPY002,UP,FA"]
