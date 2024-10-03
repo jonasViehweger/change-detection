@@ -29,10 +29,12 @@ function makeRegression(dates, harmonics=1) {
 
 function lstsq(X, y) {
     const Xt = transpose(X);
-    const Xdot = matrixDot(X, Xt);
+    const Xdot = matrixDot(Xt, X);
     const XTX = inv(Xdot);
-    const XTY = vectorMatrixMul(X, y);
-    return vectorMatrixMul(XTX, XTY);
+    const XTY = vectorMatrixMul(Xt, y);
+    const beta = vectorMatrixMul(XTX, XTY);
+    const predicted = vectorMatrixMul(X, beta);
+    return {beta, predicted}
 }
 
 function transpose(matrix) {
@@ -86,44 +88,44 @@ function inv(_A) {
         N = _A.length,
         E = [];
 
-    for (var i = 0; i < N; i++) E[i] = [];
+    for (let i = 0; i < N; i++) E[i] = [];
 
     for (i = 0; i < N; i++)
-        for (var j = 0; j < N; j++) {
+        for (let j = 0; j < N; j++) {
             E[i][j] = 0;
             if (i == j) E[i][j] = 1;
         }
 
-    for (var k = 0; k < N; k++) {
+    for (let k = 0; k < N; k++) {
         temp = _A[k][k];
 
-        for (var j = 0; j < N; j++) {
+        for (let j = 0; j < N; j++) {
             _A[k][j] /= temp;
             E[k][j] /= temp;
         }
 
-        for (var i = k + 1; i < N; i++) {
+        for (let i = k + 1; i < N; i++) {
             temp = _A[i][k];
 
-            for (var j = 0; j < N; j++) {
+            for (let j = 0; j < N; j++) {
                 _A[i][j] -= _A[k][j] * temp;
                 E[i][j] -= E[k][j] * temp;
             }
         }
     }
 
-    for (var k = N - 1; k > 0; k--) {
-        for (var i = k - 1; i >= 0; i--) {
+    for (let k = N - 1; k > 0; k--) {
+        for (let i = k - 1; i >= 0; i--) {
             temp = _A[i][k];
 
-            for (var j = 0; j < N; j++) {
+            for (let j = 0; j < N; j++) {
                 _A[i][j] -= _A[k][j] * temp;
                 E[i][j] -= E[k][j] * temp;
             }
         }
     }
 
-    for (var i = 0; i < N; i++) for (var j = 0; j < N; j++) _A[i][j] = E[i][j];
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) _A[i][j] = E[i][j];
     return _A;
 }
 
@@ -172,12 +174,12 @@ var metrics = {
   RMSE: rmse,
 };
 
-function rmse(y, pred) {
-  var mse = 0;
-  for (let i = 0; i < y.length; i++) {
-    mse += Math.pow(y[i]-pred[i], 2);
+function rmse(actual, pred) {
+  let mse = 0;
+  for (let i = 0; i < actual.length; i++) {
+    mse += Math.pow(actual[i] - pred[i], 2);
   }
-  return Math.sqrt(mse / y.length);
+  return Math.sqrt(mse / actual.length);
 }
 
 const c =
@@ -222,23 +224,20 @@ function evaluatePixel(samples) {
   }
   let y = [];
   let X = [];
-  for (let i = 0; i < nHarmonics; i++) X[i] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
     if (ds.validate(sample)) {
       y.push(ds.inputs[c.INPUT].calculate(sample));
-      for (let j = 0; j < nHarmonics; j++) {
-        X[j].push(fullX[i][j]);
-      }
+      X.push(fullX[i]);
     }
   }
   if (y.length == 0) {
     return [NaN, NaN, NaN];
   }
-  const beta = lstsq(X, y);
-  const yHat = vectorMatrixMul(X, beta);
-  const metric = metrics[c.METRIC](y, yHat);
-  return beta.push(metric);
+  const {beta, predicted} = lstsq(X, y);
+  // Calculate metric based on the residuals
+  const metric = metrics[c.METRIC](y, predicted);
+  return beta.concat(metric);
 }
 
 // DISCARD FROM HERE

@@ -45,24 +45,20 @@ function evaluatePixel(samples) {
   }
   let y = [];
   let X = [];
-  for (let i = 0; i < nHarmonics; i++) X[i] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
     if (ds.validate(sample)) {
       y.push(ds.inputs[c.INPUT].calculate(sample));
-      for (let j = 0; j < nHarmonics; j++) {
-        X[j].push(fullX[i][j]);
-      }
+      X.push(fullX[i])
     }
   }
   if (y.length == 0) {
     return [NaN, NaN, NaN];
   }
-  const beta = lstsq(X, y);
+  const {beta, predicted} = lstsq(X, y);
   // Calculate metric based on the residuals
-  const yHat = vectorMatrixMul(X, beta);
-  const metric = metrics[c.METRIC](y, yHat)
-  return beta.push(metric);
+  const metric = metrics[c.METRIC](y, predicted);
+  return beta.concat(metric);
 }
 
 // DISCARD FROM HERE

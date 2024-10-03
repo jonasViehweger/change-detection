@@ -8,5 +8,5 @@ function betaTest(preProcessScenes, evaluatePixel){
 }
 
 test("Testing with two harmonics", () => {
-    expect(betaTest(preProcessScenes, evaluatePixel)).toEqual(beta.push(rmse));
+    expect(betaTest(preProcessScenes, evaluatePixel)).toEqual(beta.concat(rmse));
   });

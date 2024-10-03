@@ -18,7 +18,7 @@ import toml
 from rasterio.io import MemoryFile
 from rasterio.session import AWSSession
 
-from .cog import write_metric, write_models, write_monitor
+from .cog import write_models, write_monitor
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
 
@@ -87,6 +87,7 @@ def prepare_evalscript(monitor_params: MonitorParameters, path: Path | Traversab
         "INPUT": monitor_params.signal,
         "SENSITIVITY": monitor_params.sensitivity,
         "BOUND": monitor_params.boundary,
+        "METRIC": monitor_params.metric,
     }
     split_config = evalscript.split("// CONFIG")
     split_config[1] = json.dumps(eval_config) + ";"
@@ -167,11 +168,6 @@ class ProcessAPI(Backend):
             with DATA_PATH.joinpath("visualize_disturbed_date.cjs").open() as src:
                 evalscript = src.read()
             self.sh_configuration.create_layer("DISTURBED-DATE", evalscript)
-            print("5/6 Computing metric")
-            metrics = self.compute_metric()
-            print("6/6 Writing metric to bucket")
-            with MemoryFile(metrics) as memfile:
-                write_metric(memfile, self.s3)
             self.monitor_params.state = "INITIALIZED"
 
     def compute_models(self) -> bytes:
@@ -200,44 +196,6 @@ class ProcessAPI(Backend):
             print(beta.content)
             raise
         return beta.content
-
-    def compute_metric(self) -> bytes:
-        sigma_data = [
-            {
-                "dataFilter": {
-                    "timeRange": {
-                        "from": f"{self.monitor_params.fit_start.isoformat()}T00:00:00Z",
-                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T00:00:00Z",
-                    },
-                    "mosaickingOrder": "leastRecent",
-                },
-                "type": self.monitor_params.datasource_id,
-                "id": self.monitor_params.datasource,
-            },
-            {
-                "dataFilter": {
-                    "timeRange": {
-                        "from": f"{self.monitor_params.fit_start.isoformat()}T00:00:00Z",
-                        "to": f"{self.monitor_params.monitoring_start.isoformat()}T23:59:59Z",
-                    }
-                },
-                "type": f"byoc-{self.byoc_id}",
-                "id": "beta",
-            },
-        ]
-
-        sigma_request = self.base_request(
-            sigma_data,
-            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("rmse.cjs")),
-        )
-
-        sigma = self.client.post(self.url, json=sigma_request)
-        try:
-            sigma.raise_for_status()
-        except:
-            print(sigma.text)
-            raise
-        return sigma.content
 
     def base_request(self, data: list, evalscript: str) -> dict:
         crs = "http://www.opengis.net/def/crs/EPSG/0/4326"
@@ -407,10 +365,6 @@ class AsyncAPI(Backend):
             self.byoc_id = self.byoc.create_byoc()
             manager.add_resource(self.byoc)
             self.byoc.ingest_tile(self.monitor_params.monitoring_start)
-            print("5/6 Computing metric")
-            async_id = self.compute_metric()
-            print("6/6 Writing metric to bucket")
-            self.write_async(async_id, write_metric)
             self.monitor_params.state = "INITIALIZED"
 
     def wait_for_async(self, async_id: str) -> None:

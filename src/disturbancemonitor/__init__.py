@@ -81,7 +81,7 @@ def start_monitor(
     config = load_config()
     config_exists = name in config
     backend_exists = name + "." + backend in config
-    is_initialized = config[name]["state"] == "INITIALIZED"
+    is_initialized = config.get(name, {}).get("state", None) == "INITIALIZED"
     if config_exists and backend_exists and is_initialized and not overwrite:
         raise AttributeError(
             f"Monitor with name {name} and backend {backend} already exists. Use load_monitor('{name}',"
