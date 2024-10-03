@@ -177,3 +177,60 @@ class BYOC(Resource):
         """Delete the BYOC Collection"""
         delete = self.client.delete(f"{self.url}/{self.byoc_id}")
         delete.raise_for_status()
+
+
+class SHConfiguration(Resource):
+    def __init__(
+        self,
+        sh_client: SHClient,
+        monitor_name: str,
+        byoc_id: str,
+    ):
+        self.client = sh_client
+        self.byoc_id = byoc_id
+        self.monitor_name = monitor_name
+        self.url = "https://services.sentinel-hub.com/configuration/v1/wms/instances"
+
+    def create_instance(self) -> None:
+        instance_data = {
+            "name": f"Disturbance Monitor - {self.monitor_name}",
+            "description": "Output of the disturbance monitoring",
+        }
+        instance = self.client.post(self.url, json=instance_data)
+        try:
+            instance.raise_for_status()
+        except HTTPError as e:
+            print(f"Request failed: {e.response.status_code} - {e.response.text}")
+            raise
+        self.instance_id = instance.json()["id"]
+
+    def create_layer(self, title: str, evalscript: str) -> None:
+        layer = {
+            "title": title,
+            "id": title.upper(),
+            "description": "",
+            "datasetSource": {
+                "@id": "https://services.sentinel-hub.com/configuration/v1/datasets/CUSTOM/sources/10",
+                "id": 10,
+                "description": "Bring Your Own COG",
+                "settings": {"indexServiceUrl": "https://services.sentinel-hub.com/byoc"},
+                "dataset": {"@id": "https://services.sentinel-hub.com/configuration/v1/datasets/CUSTOM"},
+            },
+            "dataset": {"@id": "https://services.sentinel-hub.com/configuration/v1/datasets/CUSTOM"},
+            "styles": [{"name": "default", "description": "Default layer style", "evalScript": evalscript}],
+            "instanceId": self.instance_id,
+            "defaultStyleName": "default",
+            "datasourceDefaults": {"type": "CUSTOM", "mosaickingOrder": "mostRecent", "collectionId": self.byoc_id},
+        }
+        layer_response = self.client.post(f"{self.url}/{self.instance_id}/layers", json=layer)
+        try:
+            layer_response.raise_for_status()
+        except HTTPError as e:
+            print(layer)
+            print(f"Request failed: {e.response.status_code} - {e.response.text}")
+            raise
+
+    def delete(self) -> None:
+        """Delete the Configuration"""
+        delete = self.client.delete(f"{self.url}/{self.instance_id}")
+        delete.raise_for_status()

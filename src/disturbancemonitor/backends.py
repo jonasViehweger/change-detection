@@ -20,7 +20,7 @@ from rasterio.session import AWSSession
 
 from .cog import write_metric, write_models, write_monitor
 from .monitor_params import MonitorParameters
-from .resources import BYOC, S3, ResourceManager, SHClient
+from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
 
 CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
 DATA_PATH = files("disturbancemonitor.data")
@@ -159,6 +159,14 @@ class ProcessAPI(Backend):
             self.byoc_id = self.byoc.create_byoc()
             manager.add_resource(self.byoc)
             self.byoc.ingest_tile(self.monitor_params.monitoring_start)
+            print("5/6 Creating configuration")
+            self.sh_configuration = SHConfiguration(self.client, self.monitor_params.name, self.byoc_id)
+            manager.add_resource(self.sh_configuration)
+            self.sh_configuration.create_instance()
+            print("6/6 Creating layer")
+            with DATA_PATH.joinpath("visualize_disturbed_date.cjs").open() as src:
+                evalscript = src.read()
+            self.sh_configuration.create_layer("DISTURBED-DATE", evalscript)
             print("5/6 Computing metric")
             metrics = self.compute_metric()
             print("6/6 Writing metric to bucket")
