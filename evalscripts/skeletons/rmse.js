@@ -77,3 +77,9 @@ function evaluatePixel(samples) {
   }
   return [Math.sqrt(mse / valid)];
 }
+
+// DISCARD FROM HERE
+
+exports.setup = setup;
+exports.preProcessScenes = preProcessScenes;
+exports.evaluatePixel = evaluatePixel;

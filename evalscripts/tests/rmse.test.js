@@ -1,7 +1,9 @@
-import { evaluatePixel, preProcessScenes } from "../../src/disturbancemonitor/data/predict";
+import {
+  evaluatePixel,
+  preProcessScenes,
+} from "../../src/disturbancemonitor/data/rmse";
 import { collections } from "./collections.scenes.orbits";
 import { samples, beta } from "./samples";
-import "../utils/eval_utils";
 
 const dataFusion = {
   ARPS: samples,
@@ -12,8 +14,6 @@ const dataFusion = {
       c_3: beta[2],
       c_4: beta[3],
       c_5: beta[4],
-      metric: 0.001,
-      process: 0,
     },
   ],
 };
@@ -24,11 +24,11 @@ const scenes = {
   ARPS: { scenes: { orbits: collections.scenes.orbits } },
 };
 
-function predictTest(preProcessScenes, evaluatePixel) {
+function rmseTest(preProcessScenes, evaluatePixel) {
   preProcessScenes(collectionsDf);
-  return evaluatePixel(dataFusion, scenes);
+  return evaluatePixel(dataFusion);
 }
 
-test("Test monitoring over a time series. Result should be ignored", () => {
-  expect(predictTest(preProcessScenes, evaluatePixel)).toEqual([20211215, 5]);
+test("Testing RMSE", () => {
+  expect(rmseTest(preProcessScenes, evaluatePixel)).toEqual([0.14216365527336153]);
 });

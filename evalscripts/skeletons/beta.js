@@ -1,23 +1,28 @@
 import makeRegression from "../utils/makeRegression";
-import lstsq from "../utils/lstsq";
+import lstsq, { vectorMatrixMul } from "../utils/lstsq";
 import { dataSources } from "../utils/datasources";
+import { metrics } from "../utils/metrics";
 
 const c =
 // CONFIG
 {
   HARMONICS: 2,
   DATASOURCE: "ARPS",
-  INPUT: "NDVI"
+  INPUT: "NDVI",
+  METRIC: "RMSE"
 }
 // CONFIG
 
 const ds = dataSources[c.DATASOURCE];
+// Number of harmonics
+const nHarmonics = c.HARMONICS * 2 + 1
 
 function setup() {
   return {
     input: ds.validBands.concat(ds.inputs[c.INPUT].bands),
     output: {
-      bands: c.HARMONICS * 2 + 1,
+      // +1 for metric
+      bands: nHarmonics + 1,
       sampleType: "FLOAT32",
     },
     mosaicking: "ORBIT",
@@ -40,13 +45,12 @@ function evaluatePixel(samples) {
   }
   let y = [];
   let X = [];
-  const N = c.HARMONICS * 2 + 1;
-  for (let i = 0; i < N; i++) X[i] = [];
+  for (let i = 0; i < nHarmonics; i++) X[i] = [];
   for (let i = 0; i < samples.length; i++) {
     const sample = samples[i];
     if (ds.validate(sample)) {
       y.push(ds.inputs[c.INPUT].calculate(sample));
-      for (let j = 0; j < N; j++) {
+      for (let j = 0; j < nHarmonics; j++) {
         X[j].push(fullX[i][j]);
       }
     }
@@ -55,7 +59,10 @@ function evaluatePixel(samples) {
     return [NaN, NaN, NaN];
   }
   const beta = lstsq(X, y);
-  return beta;
+  // Calculate metric based on the residuals
+  const yHat = vectorMatrixMul(X, beta);
+  const metric = metrics[c.METRIC](y, yHat)
+  return beta.push(metric);
 }
 
 // DISCARD FROM HERE

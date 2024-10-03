@@ -1,12 +1,12 @@
-import {evaluatePixel, preProcessScenes} from "../beta"
+import {evaluatePixel, preProcessScenes} from "../../src/disturbancemonitor/data/beta"
 import {collections} from "./collections.scenes.orbits"
-import {samples, beta} from "./samples"
+import {samples, beta, rmse} from "./samples"
 
 function betaTest(preProcessScenes, evaluatePixel){
     preProcessScenes(collections)
     return evaluatePixel(samples)
 }
 
-test('testing with two harmonics', () => {
-    expect(betaTest(preProcessScenes, evaluatePixel)).toEqual(beta);
+test("Testing with two harmonics", () => {
+    expect(betaTest(preProcessScenes, evaluatePixel)).toEqual(beta.push(rmse));
   });

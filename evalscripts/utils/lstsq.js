@@ -39,7 +39,7 @@ function matrixDot(a, b) {
     return m;
 }
 
-function vectorMatrixMul(A, B) {
+export function vectorMatrixMul(A, B) {
     let result_len = A.length;
     let result = new Array(result_len).fill(0);
     for (let i = 0; i < B.length; i++) {
