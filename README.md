@@ -48,5 +48,5 @@ or dump the model and reload at a later date
 ```python
 monitor.dump()
 # load from config by name
-dm.load_monitor(name="MyMonitor")
+reloaded_monitor = dm.load_monitor(name="MyMonitor")
 ```
