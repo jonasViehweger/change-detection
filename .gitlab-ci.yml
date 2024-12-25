@@ -1,0 +1,13 @@
+stages:
+  - format
+
+format:
+  image: python:3.10
+  stage: format
+  before_script:
+    - pip install pre-commit
+  script:
+    - pre-commit run --all-files
+  only:
+    - main
+    - merge_requests
