@@ -28,7 +28,7 @@ def start_monitor(
     **kwargs,
 ) -> Backend:
     """
-    Initialize distubance monitoring
+    Initialize disturbance monitoring
 
     This function is used to first initialize a disturbance monitor.
     The parameters used to initialize the monitor are saved in the config file
@@ -81,7 +81,7 @@ def start_monitor(
     config = load_config()
     config_exists = name in config
     backend_exists = name + "." + backend in config
-    is_initialized = config[name]["state"] == "INITIALIZED"
+    is_initialized = config.get(name, {}).get("state") == "INITIALIZED"
     if config_exists and backend_exists and is_initialized and not overwrite:
         raise AttributeError(
             f"Monitor with name {name} and backend {backend} already exists. Use load_monitor('{name}',"
@@ -96,11 +96,17 @@ def start_monitor(
 
 def load_config() -> dict:
     """Loads config from toml file as dict"""
-    with open(CONFIG_PATH / "config.toml") as configfile:
-        return toml.load(configfile)
+    config_toml = CONFIG_PATH / "config.toml"
+    try:
+        with open(config_toml) as configfile:
+            return toml.load(configfile)
+    except FileNotFoundError as e:
+        CONFIG_PATH.mkdir(parents=True, exist_ok=True)
+        config_toml.touch()
+        return {}
 
 
-def load_monitor(name: str, backend: _backend_types = "ProcessAPI") -> Backend:
+def load_monitor(name: str, backend: _backend_types = "ProcessAPI") -> Backend: # TODO: backend sollte mit gedumpt werden
     """
     Load Monitor from config
 
