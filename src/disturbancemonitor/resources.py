@@ -14,8 +14,11 @@ import s3fs
 import toml
 from authlib.integrations.requests_client import OAuth2Session
 from botocore.exceptions import ClientError
+from dotenv import load_dotenv
 from requests import Response
 from requests.exceptions import HTTPError
+
+load_dotenv()
 
 
 class Resource:
@@ -46,7 +49,7 @@ class ResourceManager:
 
 
 class S3(Resource):
-    def __init__(self, bucket_name: str, folder_name: str, profile: str = "default") -> None:
+    def __init__(self, bucket_name: str, folder_name: str, profile: str | None = None) -> None:
         """
         Initializes an S3 object.
 

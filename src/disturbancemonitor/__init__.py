@@ -100,13 +100,15 @@ def load_config() -> dict:
     try:
         with open(config_toml) as configfile:
             return toml.load(configfile)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         CONFIG_PATH.mkdir(parents=True, exist_ok=True)
         config_toml.touch()
         return {}
 
 
-def load_monitor(name: str, backend: _backend_types = "ProcessAPI") -> Backend: # TODO: backend sollte mit gedumpt werden
+def load_monitor(
+    name: str, backend: _backend_types = "ProcessAPI"
+) -> Backend:  # TODO: backend sollte mit gedumpt werden
     """
     Load Monitor from config
 

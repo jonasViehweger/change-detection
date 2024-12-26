@@ -98,7 +98,7 @@ class ProcessAPI(Backend):
         self,
         monitor_params: MonitorParameters,
         byoc_id: str | None = None,
-        s3_profile: str = "default",
+        s3_profile: str | None = None,
         sh_profile: str = "default-profile",
         bucket_name: str | None = None,
         folder_name: str | None = None,
