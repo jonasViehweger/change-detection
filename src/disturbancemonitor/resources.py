@@ -14,11 +14,8 @@ import s3fs
 import toml
 from authlib.integrations.requests_client import OAuth2Session
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
 from requests import Response
 from requests.exceptions import HTTPError
-
-load_dotenv()
 
 
 class Resource:
@@ -65,16 +62,26 @@ class S3(Resource):
         self.session = boto3.session.Session(profile_name=profile)
         self.client = self.session.client("s3", region_name="eu-central-1")
 
-    def create_bucket(self, policy: dict) -> None:
+    def update_policy(self, new_statements: list):
+        # Get bucket policy
+        try:
+            old_policy = json.loads(self.client.get_bucket_policy(Bucket=self.bucket_name)["Policy"])
+        except self.client.exceptions.from_code("NoSuchBucketPolicy"):
+            old_policy = {"Version": "2012-10-17", "Statement": []}
+        # Check if there's already a statement with that name
+        available_statements = {statement["Sid"] for statement in old_policy["Statement"]}
+        for new_statement in new_statements:
+            if new_statement["Sid"] not in available_statements:
+                old_policy["Statement"].append(new_statement)
+        # Convert the policy from JSON dict to string
+        new_policy = json.dumps(old_policy)
+        # Set the new policy
+        self.client.put_bucket_policy(Bucket=self.bucket_name, Policy=new_policy)
+
+    def create_bucket(self) -> None:
         location = {"LocationConstraint": "eu-central-1"}
         with suppress(self.client.exceptions.BucketAlreadyOwnedByYou):
             self.client.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=location)
-
-        # Convert the policy from JSON dict to string
-        bucket_policy = json.dumps(policy)
-
-        # Set the new policy
-        self.client.put_bucket_policy(Bucket=self.bucket_name, Policy=bucket_policy)
 
     def write_binary(self, filename: str, binary: BytesIO) -> None:
         with self.s3fs.open(filename, "wb") as f:

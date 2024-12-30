@@ -120,7 +120,9 @@ class ProcessAPI(Backend):
 
     def as_dict(self) -> dict:
         subset_dict = {
-            k: v for k, v in self.__dict__.items() if k not in ["client", "url", "monitor_params", "byoc", "s3"]
+            k: v
+            for k, v in self.__dict__.items()
+            if k not in ["client", "url", "monitor_params", "byoc", "s3", "sh_configuration"]
         }
         return copy(subset_dict)
 
@@ -128,26 +130,24 @@ class ProcessAPI(Backend):
         with ResourceManager(rollback=self.rollback) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
-            self.s3.create_bucket(
-                policy={
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Sid": "Sentinel Hub permissions",
-                            "Effect": "Allow",
-                            "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                            "Action": [
-                                "s3:GetBucketLocation",
-                                "s3:ListBucket",
-                                "s3:GetObject",
-                            ],
-                            "Resource": [
-                                f"arn:aws:s3:::{self.bucket_name}",
-                                f"arn:aws:s3:::{self.bucket_name}/*",
-                            ],
-                        }
-                    ],
-                }
+            self.s3.create_bucket()
+            self.s3.update_policy(
+                new_statements=[
+                    {
+                        "Sid": "Disturbance Monitor BYOC Permissions",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
+                        "Action": [
+                            "s3:GetBucketLocation",
+                            "s3:ListBucket",
+                            "s3:GetObject",
+                        ],
+                        "Resource": [
+                            f"arn:aws:s3:::{self.bucket_name}",
+                            f"arn:aws:s3:::{self.bucket_name}/*",
+                        ],
+                    }
+                ]
             )
             manager.add_resource(self.s3)
             print("2/6 Fitting model")
@@ -370,33 +370,31 @@ class AsyncAPI(Backend):
         ) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
-            self.s3.create_bucket(
-                policy={
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Sid": "Sentinel Hub permissions",
-                            "Effect": "Allow",
-                            "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
-                            "Action": [
-                                "s3:GetBucketLocation",
-                                "s3:ListBucket",
-                                "s3:GetObject",
-                            ],
-                            "Resource": [
-                                f"arn:aws:s3:::{self.bucket_name}",
-                                f"arn:aws:s3:::{self.bucket_name}/*",
-                            ],
-                        },
-                        {
-                            "Sid": "Async Permissions",
-                            "Effect": "Allow",
-                            "Principal": {"AWS": self.role_arn},
-                            "Action": ["s3:GetObject", "s3:PutObject"],
-                            "Resource": [f"arn:aws:s3:::{self.bucket_name}/*"],
-                        },
-                    ],
-                }
+            self.s3.create_bucket()
+            self.s3.update_policy(
+                new_statements=[
+                    {
+                        "Sid": "Disturbance Monitor BYOC Permissions",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
+                        "Action": [
+                            "s3:GetBucketLocation",
+                            "s3:ListBucket",
+                            "s3:GetObject",
+                        ],
+                        "Resource": [
+                            f"arn:aws:s3:::{self.bucket_name}",
+                            f"arn:aws:s3:::{self.bucket_name}/*",
+                        ],
+                    },
+                    {
+                        "Sid": "Async Permissions",
+                        "Effect": "Allow",
+                        "Principal": {"AWS": self.role_arn},
+                        "Action": ["s3:GetObject", "s3:PutObject"],
+                        "Resource": [f"arn:aws:s3:::{self.bucket_name}/*"],
+                    },
+                ]
             )
             manager.add_resource(self.s3)
             print("2/6 Fitting model")

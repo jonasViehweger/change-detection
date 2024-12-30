@@ -28,6 +28,7 @@ dev-dependencies = [
     "ipykernel>=6.29.5",
     "pre-commit>=3.8.0",
     "python-dotenv>=1.0.1",
+    "python-openstackclient>=7.2.1",
     "sentinelhub>=3.11.1",
     "types-requests>=2.32.0.20240712",
     "types-toml>=0.10.8.20240310",
