@@ -1,14 +1,39 @@
 import datetime
 import json
 from typing import Literal
+from dataclasses import fields
 
 import toml
 
 from .backends import CONFIG_PATH, AsyncAPI, Backend, ProcessAPI
 from .monitor_params import MonitorParameters
 
+class MonitorInitializationError(Exception):
+    """Custom exception for monitor initialization errors."""
+    pass
+
 BACKENDS = {"ProcessAPI": ProcessAPI, "AsyncAPI": AsyncAPI}
-_backend_types = Literal["ProcessAPI", "AsyncAPI"]
+BackendTypes = Literal["ProcessAPI", "AsyncAPI"]
+SignalTypes = Literal["NDVI"]
+MetricTypes = Literal["RMSE"]
+DatasourceTypes = Literal["S2L2A", "ARPS"]
+
+def initialize_monitor(params: MonitorParameters, backend: BackendTypes, **kwargs) -> Backend:
+    """
+    Initialize a new monitor.
+
+    Parameters:
+        params (MonitorParameters): Parameters for the monitor.
+        backend (BackendTypes): Backend type to use.
+        **kwargs: Additional arguments for the backend.
+
+    Returns:
+        Backend: Initialized backend instance.
+    """
+    backend_instance = BACKENDS[backend](params, **kwargs)
+    backend_instance.init_model()
+    backend_instance.dump()
+    return backend_instance
 
 
 def start_monitor(
@@ -16,15 +41,16 @@ def start_monitor(
     monitoring_start: datetime.date,
     geometry: dict,
     resolution: float = 0.001,
-    datasource: Literal["S2L2A", "ARPS"] = "S2L2A",
+    datasource: DatasourceTypes = "S2L2A",
     datasource_id: str | None = None,
     harmonics: int = 2,
-    signal: Literal["NDVI"] = "NDVI",
-    metric: Literal["RMSE"] = "RMSE",
-    sensitivity: float = 5,
-    boundary: float = 5,
-    backend: _backend_types = "ProcessAPI",
+    signal: SignalTypes = "NDVI",
+    metric: MetricTypes = "RMSE",
+    sensitivity: float = 5.0,
+    boundary: float = 5.0,
+    backend: BackendTypes = "ProcessAPI",
     overwrite: bool = False,
+    load_only: bool = False,
     **kwargs,
 ) -> Backend:
     """
@@ -60,9 +86,14 @@ def start_monitor(
             10000x10000 and doesn't time out as quickly.
         overwrite (bool): If an already existing monitor should be overwritten.
     """
-    state = kwargs.pop("state", "NOT_INITIALIZED")
-    last_monitored = kwargs.pop("last_monitored", monitoring_start)
-    unique_id = kwargs.pop("random_id", None)  # noqa: F841
+    config = load_config()
+    config_exists = name in config
+    backend_exists = f"{name}.{backend}" in config
+    is_initialized = config.get(name, {}).get("state") == "INITIALIZED"
+
+    monitor_param_fields = {f.name for f in fields(MonitorParameters)}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in monitor_param_fields}
+
     params = MonitorParameters(
         name=name,
         monitoring_start=monitoring_start,
@@ -75,23 +106,22 @@ def start_monitor(
         metric=metric,
         sensitivity=sensitivity,
         boundary=boundary,
-        state=state,
-        last_monitored=last_monitored,
+        **filtered_kwargs
     )
-    config = load_config()
-    config_exists = name in config
-    backend_exists = name + "." + backend in config
-    is_initialized = config.get(name, {}).get("state") == "INITIALIZED"
+
+    if load_only:
+        return BACKENDS[backend](params, **kwargs)
+
     if config_exists and backend_exists and is_initialized and not overwrite:
-        raise AttributeError(
-            f"Monitor with name {name} and backend {backend} already exists. Use load_monitor('{name}',"
-            f" backend='{backend}') instead."
+        raise MonitorInitializationError(
+            f"Monitor with name '{name}' and backend '{backend}' already exists. "
+            f"Use load_monitor('{name}', backend='{backend}') or set overwrite=True."
         )
-    backend_ = BACKENDS[backend](params, **kwargs)
-    if state == "NOT_INITIALIZED":
-        backend_.init_model()
-        backend_.dump()
-    return backend_
+
+    if overwrite:
+        return initialize_monitor(params, backend, **kwargs)
+
+    return initialize_monitor(params, backend, **kwargs)
 
 
 def load_config() -> dict:
@@ -107,7 +137,7 @@ def load_config() -> dict:
 
 
 def load_monitor(
-    name: str, backend: _backend_types = "ProcessAPI"
+    name: str, backend: BackendTypes = "ProcessAPI"
 ) -> Backend:  # TODO: backend sollte mit gedumpt werden
     """
     Load Monitor from config
@@ -127,7 +157,7 @@ def load_monitor(
         geometry=geometry,
         name=name,
         backend=backend,
-        overwrite=True,
+        load_only=True,
         **config[f"{name}"],
         **config[f"{name}.{backend}"],
     )
