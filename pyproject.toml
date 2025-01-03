@@ -2,6 +2,7 @@
 name = "disturbancemonitor"
 version = "0.1.0"
 description = "A package to monitor disturbances in satellite time series in near real time."
+requires-python = ">= 3.12"
 readme = "README.md"
 dependencies = [
   "numpy",
@@ -15,6 +16,14 @@ dependencies = [
   "python-dotenv>=1.0.1",
 ]
 
+[tool.mypy]
+ignore_missing_imports = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -26,7 +35,9 @@ dev-dependencies = [
     "boto3-stubs>=1.35.10",
     "disturbancemonitor",
     "ipykernel>=6.29.5",
+    "mypy>=1.14.1",
     "pre-commit>=3.8.0",
+    "pytest>=8.3.4",
     "python-dotenv>=1.0.1",
     "python-openstackclient>=7.2.1",
     "sentinelhub>=3.11.1",

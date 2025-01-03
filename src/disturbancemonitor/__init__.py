@@ -1,22 +1,24 @@
 import datetime
 import json
-from typing import Literal
 from dataclasses import fields
+from typing import Literal, Unpack
 
 import toml
 
 from .backends import CONFIG_PATH, AsyncAPI, Backend, ProcessAPI
 from .monitor_params import MonitorParameters
 
+
 class MonitorInitializationError(Exception):
     """Custom exception for monitor initialization errors."""
-    pass
+
 
 BACKENDS = {"ProcessAPI": ProcessAPI, "AsyncAPI": AsyncAPI}
 BackendTypes = Literal["ProcessAPI", "AsyncAPI"]
 SignalTypes = Literal["NDVI"]
 MetricTypes = Literal["RMSE"]
 DatasourceTypes = Literal["S2L2A", "ARPS"]
+
 
 def initialize_monitor(params: MonitorParameters, backend: BackendTypes, **kwargs) -> Backend:
     """
@@ -51,7 +53,7 @@ def start_monitor(
     backend: BackendTypes = "ProcessAPI",
     overwrite: bool = False,
     load_only: bool = False,
-    **kwargs,
+    **kwargs: Unpack[MonitorParameters],
 ) -> Backend:
     """
     Initialize disturbance monitoring
@@ -92,6 +94,7 @@ def start_monitor(
     is_initialized = config.get(name, {}).get("state") == "INITIALIZED"
 
     monitor_param_fields = {f.name for f in fields(MonitorParameters)}
+    last_monitored = kwargs.pop("last_monitored", monitoring_start)
     filtered_kwargs = {k: v for k, v in kwargs.items() if k in monitor_param_fields}
 
     params = MonitorParameters(
@@ -106,10 +109,12 @@ def start_monitor(
         metric=metric,
         sensitivity=sensitivity,
         boundary=boundary,
-        **filtered_kwargs
+        last_monitored=last_monitored,
+        **filtered_kwargs,
     )
 
     if load_only:
+        # TODO make sure **kwargs are supported by BACKEND.
         return BACKENDS[backend](params, **kwargs)
 
     if config_exists and backend_exists and is_initialized and not overwrite:
@@ -136,9 +141,7 @@ def load_config() -> dict:
         return {}
 
 
-def load_monitor(
-    name: str, backend: BackendTypes = "ProcessAPI"
-) -> Backend:  # TODO: backend sollte mit gedumpt werden
+def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:  # TODO: backend sollte mit gedumpt werden
     """
     Load Monitor from config
 

@@ -33,7 +33,7 @@ class Backend:
     def init_model(self) -> None:
         raise NotImplementedError
 
-    def monitor(self, end: datetime.date | None = None) -> None:
+    def monitor(self, end: datetime.date | None = None) -> dict | None:
         """
         Will automatically monitor from `last_monitored` to `end_date`
         """
@@ -303,6 +303,7 @@ class ProcessAPI(Backend):
         with tarfile.open(fileobj=BytesIO(monitor_data.content)) as tar:
             # Find the userdata.json file
             userdata_file = tar.extractfile("userdata.json")  # Extract it in memory
+            assert userdata_file
             # Read the content of userdata.json
             json_data = userdata_file.read().decode("utf-8")  # Decode from bytes to string
 
@@ -311,6 +312,7 @@ class ProcessAPI(Backend):
 
             # Find the userdata.json file
             output_tif = tar.extractfile("default.tif")  # Extract it in memory
+            assert output_tif
             # Read the content of userdata.json
             with MemoryFile(output_tif.read()) as memfile:
                 write_monitor(memfile, self.s3)
