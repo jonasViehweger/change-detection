@@ -62,7 +62,7 @@ class S3(Resource):
         self.session = boto3.session.Session(profile_name=profile)
         self.client = self.session.client("s3", region_name="eu-central-1")
 
-    def update_policy(self, new_statements: list):
+    def update_policy(self, new_statements: list) -> None:
         # Get bucket policy
         try:
             old_policy = json.loads(self.client.get_bucket_policy(Bucket=self.bucket_name)["Policy"])
@@ -149,11 +149,12 @@ class BYOC(Resource):
         self.byoc_id = byoc_id
         self.url = "https://services.sentinel-hub.com/api/v1/byoc/collections"
 
-    def create_byoc(self) -> str | None:
+    def create_byoc(self) -> str:
         new_collection = {"name": self.folder_name, "s3Bucket": self.bucket_name}
         byoc = self.client.post(self.url, json=new_collection)
         byoc.raise_for_status()
         self.byoc_id = byoc.json()["data"]["id"]
+        assert isinstance(self.byoc_id, str)
         return self.byoc_id
 
     def ingest_tile(self, sensing_time: datetime.date) -> None:
