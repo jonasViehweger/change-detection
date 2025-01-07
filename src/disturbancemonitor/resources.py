@@ -6,7 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from time import sleep
 from types import TracebackType
-from typing import Literal
+from typing import Any, Literal
 
 import boto3
 import boto3.session
@@ -122,15 +122,15 @@ class SHClient:
         if self.client.token.is_expired():
             self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
 
-    def post(self, *args, **kwargs) -> Response:
+    def post(self, *args: Any, **kwargs: Any) -> Response:
         self.get_token()
         return self.client.post(*args, **kwargs)
 
-    def delete(self, *args, **kwargs) -> Response:
+    def delete(self, *args: Any, **kwargs: Any) -> Response:
         self.get_token()
         return self.client.delete(*args, **kwargs)
 
-    def get(self, *args, **kwargs) -> Response:
+    def get(self, *args: Any, **kwargs: Any) -> Response:
         self.get_token()
         return self.client.get(*args, **kwargs)
 
@@ -202,7 +202,7 @@ class SHConfiguration(Resource):
         self.url = "https://services.sentinel-hub.com/configuration/v1/wms/instances"
         self.instance_id = instance_id
 
-    def create_instance(self) -> None:
+    def create_instance(self) -> str:
         instance_data = {
             "name": f"Disturbance Monitor - {self.monitor_name}",
             "description": "Output of the disturbance monitoring",

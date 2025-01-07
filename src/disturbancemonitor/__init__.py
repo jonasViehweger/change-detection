@@ -2,7 +2,7 @@ import datetime
 from dataclasses import fields
 from os import PathLike
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import geopandas as gpd
 import toml
@@ -23,7 +23,7 @@ DatasourceTypes = Literal["S2L2A", "ARPS"]
 
 
 def initialize_monitor(
-    params: MonitorParameters, backend: BackendTypes, input_path: str | PathLike, id_column: str, **kwargs
+    params: MonitorParameters, backend: BackendTypes, input_path: str | PathLike, id_column: str, **kwargs: Any
 ) -> Backend:
     """
     Initialize a new monitor.
@@ -47,7 +47,7 @@ def start_monitor(
     name: str,
     monitoring_start: datetime.date,
     geometry_path: str | PathLike,
-    id_column: str | None,
+    id_column: str,
     resolution: float = 50,
     datasource: DatasourceTypes = "S2L2A",
     datasource_id: str | None = None,
@@ -59,7 +59,7 @@ def start_monitor(
     backend: BackendTypes = "ProcessAPI",
     overwrite: bool = False,
     load_only: bool = False,
-    **kwargs,
+    **kwargs: Any,
 ) -> Backend:
     """
     Initialize disturbance monitoring
@@ -167,7 +167,7 @@ def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:  #
     return start_monitor(
         name=name,
         backend=backend,
-        id_column=None,
+        id_column="MONITOR_FEATURE_ID",
         load_only=True,
         **config[f"{name}"],
         **config[f"{name}.{backend}"],
