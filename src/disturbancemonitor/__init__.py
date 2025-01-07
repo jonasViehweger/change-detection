@@ -1,8 +1,10 @@
 import datetime
-import json
 from dataclasses import fields
+from os import PathLike
+from pathlib import Path
 from typing import Literal
 
+import geopandas as gpd
 import toml
 
 from .backends import CONFIG_PATH, AsyncAPI, Backend, ProcessAPI
@@ -20,7 +22,9 @@ MetricTypes = Literal["RMSE"]
 DatasourceTypes = Literal["S2L2A", "ARPS"]
 
 
-def initialize_monitor(params: MonitorParameters, backend: BackendTypes, **kwargs) -> Backend:
+def initialize_monitor(
+    params: MonitorParameters, backend: BackendTypes, input_path: str | PathLike, id_column: str, **kwargs
+) -> Backend:
     """
     Initialize a new monitor.
 
@@ -32,6 +36,7 @@ def initialize_monitor(params: MonitorParameters, backend: BackendTypes, **kwarg
     Returns:
         Backend: Initialized backend instance.
     """
+    prepare_geometry(input_path, id_column, params.geometry_path)
     backend_instance = BACKENDS[backend](params, **kwargs)
     backend_instance.init_model()
     backend_instance.dump()
@@ -41,8 +46,9 @@ def initialize_monitor(params: MonitorParameters, backend: BackendTypes, **kwarg
 def start_monitor(
     name: str,
     monitoring_start: datetime.date,
-    geometry: dict,
-    resolution: float = 0.001,
+    geometry_path: str | PathLike,
+    id_column: str,
+    resolution: float = 50,
     datasource: DatasourceTypes = "S2L2A",
     datasource_id: str | None = None,
     harmonics: int = 2,
@@ -72,8 +78,9 @@ def start_monitor(
             Use `.load_monitor()` to load an already existing monitor.
         monitoring_start (datetime.date): Start of the monitoring. The model will
             be fit on the year before `monitoring_start`.
-        geometry (dict): GeoJSON of the area to be monitored. Must be a single polygon.
-        resolution (float): Resolution of a single pixel in degrees
+        geometry_path (str | PathLike): Path to the geometry to use, must be a file format compatible with fiona.
+            Only Polygons will be considered
+        resolution (float): Resolution of a single pixel in meters
         datasource (str): Data source used for monitoring. One of "ARPS, S2L2A"
         harmonics (int): Number of harmonics. First order harmonics have a period of 1 year,
             second order a period of half a year and so on. Used during fitting of the model
@@ -97,11 +104,12 @@ def start_monitor(
     last_monitored = kwargs.pop("last_monitored", monitoring_start)
     filtered_monitor_kwargs = {k: v for k, v in kwargs.items() if k in monitor_param_fields}
     backend_kwargs = {k: v for k, v in kwargs.items() if k not in monitor_param_fields}
+    geometry_out_path = CONFIG_PATH / "geoms" / f"{name}.gpkg"
 
     params = MonitorParameters(
         name=name,
         monitoring_start=monitoring_start,
-        geometry=geometry,
+        geometry_path=geometry_out_path,
         resolution=resolution,
         datasource=datasource,
         datasource_id=datasource_id,
@@ -124,9 +132,9 @@ def start_monitor(
         )
 
     if overwrite:
-        return initialize_monitor(params, backend, **backend_kwargs)
+        return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
 
-    return initialize_monitor(params, backend, **backend_kwargs)
+    return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
 
 
 def load_config() -> dict:
@@ -152,15 +160,42 @@ def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:  #
         name (str): Name of the monitor, as saved in the config file
         backend (backend): Which backend to use for the monitor.
     """
-    geom_out = CONFIG_PATH / "geoms"
     config = load_config()
-    with open(geom_out / (name + ".geojson")) as fs:
-        geometry = json.load(fs)
     return start_monitor(
-        geometry=geometry,
         name=name,
         backend=backend,
         load_only=True,
         **config[f"{name}"],
         **config[f"{name}.{backend}"],
     )
+
+
+def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path: str | PathLike) -> None:
+    """
+    Load a geometry file, reproject it to EPSG:3857, set the column name to the id_column,
+    check if all values in the id column are unique, and write it to a GeoPackage.
+
+    Parameters:
+    - input_path (str): Path to the input geometry file.
+    - id_column (str): The name of the column to be used as the ID column.
+    - output_path (str): Path to the output GeoPackage file.
+
+    Returns:
+    - bool: True if all values in the id_column are unique, False otherwise.
+    """
+    # Load the input geometry with GeoPandas
+    gdf = gpd.read_file(geometry_path).to_crs(epsg=3857).rename(columns={id_column: "MONITOR_FEATURE_ID"})
+
+    # Check for any geometries which aren't POLYGONS
+    if not all(gdf.geometry.type == "Polygon"):
+        raise ValueError("All geometries must be of type POLYGON")
+
+    # Check for uniqueness in the id_column
+    is_unique = gdf["MONITOR_FEATURE_ID"].is_unique
+    if not is_unique:
+        raise ValueError("Duplicate ID found")
+
+    # Write out to GeoPackage
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
+    gdf.to_file(output_path, driver="GPKG")

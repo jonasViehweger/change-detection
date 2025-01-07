@@ -157,9 +157,9 @@ class BYOC(Resource):
         assert isinstance(self.byoc_id, str)
         return self.byoc_id
 
-    def ingest_tile(self, sensing_time: datetime.date) -> None:
+    def ingest_tile(self, sensing_time: datetime.date, feature_id: str | int) -> None:
         tile_json = {
-            "path": f"{self.folder_name}/(BAND).tif",
+            "path": f"{self.folder_name}/{feature_id}/(BAND).tif",
             "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z",
         }
         try:
