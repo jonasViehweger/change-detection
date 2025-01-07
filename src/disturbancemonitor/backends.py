@@ -97,15 +97,16 @@ class ProcessAPI(Backend):
     def __init__(
         self,
         monitor_params: MonitorParameters,
+        bucket_name: str | None = None,
+        folder_name: str | None = None,
         byoc_id: str | None = None,
         s3_profile: str | None = None,
         sh_profile: str = "default-profile",
-        bucket_name: str | None = None,
-        folder_name: str | None = None,
+        monitor_id: str | None = None,
         rollback: bool = True,
     ) -> None:
-        self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
-        self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
+        self.monitor_id = monitor_id or "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        self.bucket_name = bucket_name or (monitor_params.name + "-" + self.monitor_id).lower()
         self.folder_name = folder_name or (monitor_params.name).lower()
         self.s3_profile = s3_profile
         self.sh_profile = sh_profile
@@ -342,10 +343,11 @@ class AsyncAPI(Backend):
         s3_profile: str = "default",
         async_profile: str | None = None,
         role_arn: str | None = None,
+        monitor_id: str | None = None,
         rollback: bool = True,
     ) -> None:
-        self.random_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
-        self.bucket_name = bucket_name or (monitor_params.name + "-" + self.random_id).lower()
+        self.monitor_id = monitor_id or "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        self.bucket_name = bucket_name or (monitor_params.name + "-" + self.monitor_id).lower()
         self.folder_name = folder_name or (monitor_params.name).lower()
         self.s3_profile = s3_profile
         self.sh_profile = sh_profile

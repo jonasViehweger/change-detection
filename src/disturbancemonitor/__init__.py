@@ -1,7 +1,7 @@
 import datetime
 import json
 from dataclasses import fields
-from typing import Literal, Unpack
+from typing import Literal
 
 import toml
 
@@ -53,7 +53,7 @@ def start_monitor(
     backend: BackendTypes = "ProcessAPI",
     overwrite: bool = False,
     load_only: bool = False,
-    **kwargs: Unpack[MonitorParameters],
+    **kwargs,
 ) -> Backend:
     """
     Initialize disturbance monitoring
@@ -95,7 +95,8 @@ def start_monitor(
 
     monitor_param_fields = {f.name for f in fields(MonitorParameters)}
     last_monitored = kwargs.pop("last_monitored", monitoring_start)
-    filtered_kwargs = {k: v for k, v in kwargs.items() if k in monitor_param_fields}
+    filtered_monitor_kwargs = {k: v for k, v in kwargs.items() if k in monitor_param_fields}
+    backend_kwargs = {k: v for k, v in kwargs.items() if k not in monitor_param_fields}
 
     params = MonitorParameters(
         name=name,
@@ -110,12 +111,11 @@ def start_monitor(
         sensitivity=sensitivity,
         boundary=boundary,
         last_monitored=last_monitored,
-        **filtered_kwargs,
+        **filtered_monitor_kwargs,
     )
 
     if load_only:
-        # TODO make sure **kwargs are supported by BACKEND.
-        return BACKENDS[backend](params, **kwargs)
+        return BACKENDS[backend](params, **backend_kwargs)
 
     if config_exists and backend_exists and is_initialized and not overwrite:
         raise MonitorInitializationError(
@@ -124,9 +124,9 @@ def start_monitor(
         )
 
     if overwrite:
-        return initialize_monitor(params, backend, **kwargs)
+        return initialize_monitor(params, backend, **backend_kwargs)
 
-    return initialize_monitor(params, backend, **kwargs)
+    return initialize_monitor(params, backend, **backend_kwargs)
 
 
 def load_config() -> dict:
