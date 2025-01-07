@@ -1,5 +1,6 @@
 import datetime
 from dataclasses import dataclass
+from os import PathLike
 from typing import Literal
 
 datasource_ids = {"S2L2A": "sentinel-2-l2a"}
@@ -10,7 +11,7 @@ class MonitorParameters:
     name: str
     monitoring_start: datetime.date
     last_monitored: datetime.date
-    geometry: dict
+    geometry_path: str | PathLike
     resolution: float
     datasource: Literal["S2L2A", "ARPS"] = "S2L2A"
     datasource_id: str | None = None

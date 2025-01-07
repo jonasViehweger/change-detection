@@ -6,7 +6,7 @@ from io import BytesIO
 from pathlib import Path
 from time import sleep
 from types import TracebackType
-from typing import Literal
+from typing import Any, Literal
 
 import boto3
 import boto3.session
@@ -122,15 +122,15 @@ class SHClient:
         if self.client.token.is_expired():
             self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
 
-    def post(self, *args, **kwargs) -> Response:
+    def post(self, *args: Any, **kwargs: Any) -> Response:
         self.get_token()
         return self.client.post(*args, **kwargs)
 
-    def delete(self, *args, **kwargs) -> Response:
+    def delete(self, *args: Any, **kwargs: Any) -> Response:
         self.get_token()
         return self.client.delete(*args, **kwargs)
 
-    def get(self, *args, **kwargs) -> Response:
+    def get(self, *args: Any, **kwargs: Any) -> Response:
         self.get_token()
         return self.client.get(*args, **kwargs)
 
@@ -157,9 +157,9 @@ class BYOC(Resource):
         assert isinstance(self.byoc_id, str)
         return self.byoc_id
 
-    def ingest_tile(self, sensing_time: datetime.date) -> None:
+    def ingest_tile(self, sensing_time: datetime.date, feature_id: str | int) -> None:
         tile_json = {
-            "path": f"{self.folder_name}/(BAND).tif",
+            "path": f"{self.folder_name}/{feature_id}/(BAND).tif",
             "sensingTime": f"{sensing_time.isoformat()}T00:00:00Z",
         }
         try:
@@ -186,8 +186,8 @@ class BYOC(Resource):
 
     def delete(self) -> None:
         """Delete the BYOC Collection"""
-        delete = self.client.delete(f"{self.url}/{self.byoc_id}")
-        delete.raise_for_status()
+        r = self.client.delete(f"{self.url}/{self.byoc_id}")
+        r.raise_for_status()
 
 
 class SHConfiguration(Resource):
@@ -195,14 +195,14 @@ class SHConfiguration(Resource):
         self,
         sh_client: SHClient,
         monitor_name: str,
-        byoc_id: str,
+        instance_id: str | None = None,
     ):
         self.client = sh_client
-        self.byoc_id = byoc_id
         self.monitor_name = monitor_name
         self.url = "https://services.sentinel-hub.com/configuration/v1/wms/instances"
+        self.instance_id = instance_id
 
-    def create_instance(self) -> None:
+    def create_instance(self) -> str:
         instance_data = {
             "name": f"Disturbance Monitor - {self.monitor_name}",
             "description": "Output of the disturbance monitoring",
@@ -214,8 +214,10 @@ class SHConfiguration(Resource):
             print(f"Request failed: {e.response.status_code} - {e.response.text}")
             raise
         self.instance_id = instance.json()["id"]
+        assert isinstance(self.instance_id, str)
+        return self.instance_id
 
-    def create_layer(self, title: str, evalscript: str) -> None:
+    def create_layer(self, title: str, evalscript: str, byoc_id: str) -> None:
         layer = {
             "title": title,
             "id": title.upper(),
@@ -231,7 +233,7 @@ class SHConfiguration(Resource):
             "styles": [{"name": "default", "description": "Default layer style", "evalScript": evalscript}],
             "instanceId": self.instance_id,
             "defaultStyleName": "default",
-            "datasourceDefaults": {"type": "CUSTOM", "mosaickingOrder": "mostRecent", "collectionId": self.byoc_id},
+            "datasourceDefaults": {"type": "CUSTOM", "mosaickingOrder": "mostRecent", "collectionId": byoc_id},
         }
         layer_response = self.client.post(f"{self.url}/{self.instance_id}/layers", json=layer)
         try:
@@ -243,5 +245,5 @@ class SHConfiguration(Resource):
 
     def delete(self) -> None:
         """Delete the Configuration"""
-        delete = self.client.delete(f"{self.url}/{self.instance_id}")
-        delete.raise_for_status()
+        r = self.client.delete(f"{self.url}/{self.instance_id}")
+        r.raise_for_status()
