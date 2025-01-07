@@ -47,7 +47,7 @@ def start_monitor(
     name: str,
     monitoring_start: datetime.date,
     geometry_path: str | PathLike,
-    id_column: str,
+    id_column: str | None,
     resolution: float = 50,
     datasource: DatasourceTypes = "S2L2A",
     datasource_id: str | None = None,
@@ -131,7 +131,10 @@ def start_monitor(
             f"Use load_monitor('{name}', backend='{backend}') or set overwrite=True."
         )
 
-    if overwrite:
+    if config_exists and backend_exists and overwrite:
+        backend_instance = BACKENDS[backend](params, **backend_kwargs, **config[f"{name}.{backend}"])
+        print("Deleting resources")
+        backend_instance.delete()
         return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
 
     return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
@@ -164,6 +167,7 @@ def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:  #
     return start_monitor(
         name=name,
         backend=backend,
+        id_column=None,
         load_only=True,
         **config[f"{name}"],
         **config[f"{name}.{backend}"],

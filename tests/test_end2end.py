@@ -42,7 +42,7 @@ def test_process_api(geojson_input):
         id_column="id",
         backend="ProcessAPI",
         overwrite=True,
-        resolution=1000,
+        resolution=100,
     )
     del monitor
     monitor_reloaded = dm.load_monitor("pytestProcessAPI", backend="ProcessAPI")

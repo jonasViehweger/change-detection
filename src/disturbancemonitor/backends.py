@@ -39,9 +39,7 @@ class Backend:
         raise NotImplementedError
 
     def dump(self) -> None:
-        geom_out = CONFIG_PATH / "geoms"
         CONFIG_PATH.mkdir(parents=True, exist_ok=True)
-        geom_out.mkdir(parents=True, exist_ok=True)
         toml_path = CONFIG_PATH / "config.toml"
 
         # Get the saved toml if it already exists:
@@ -54,7 +52,6 @@ class Backend:
         backend_dict = self.as_dict()
         params_dict = asdict(self.monitor_params)
         name = params_dict.pop("name")
-        geometry = params_dict.pop("geometry")
 
         config.update(
             {
@@ -64,8 +61,6 @@ class Backend:
         )
         with open(CONFIG_PATH / "config.toml", "w") as configfile:
             toml.dump(config, configfile)
-        with open(geom_out / (name + ".geojson"), "w") as fs:
-            json.dump(geometry, fs)
 
     def delete(self) -> None:
         """
@@ -96,6 +91,7 @@ class ProcessAPI(Backend):
         bucket_name: str | None = None,
         folder_name: str | None = None,
         byoc_id: str | None = None,
+        instance_id: str | None = None,
         s3_profile: str | None = None,
         sh_profile: str = "default-profile",
         monitor_id: str | None = None,
@@ -108,8 +104,10 @@ class ProcessAPI(Backend):
         self.sh_profile = sh_profile
         self.client = SHClient(self.sh_profile)
         self.byoc_id = byoc_id
+        self.instance_id = instance_id
         self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
         self.s3 = S3(self.bucket_name, self.folder_name, self.s3_profile)
+        self.sh_configuration = SHConfiguration(self.client, monitor_params.name, self.instance_id)
         self.rollback = rollback
         self.geometries = gpd.read_file(monitor_params.geometry_path)
 
@@ -120,7 +118,7 @@ class ProcessAPI(Backend):
         subset_dict = {
             k: v
             for k, v in self.__dict__.items()
-            if k not in ["client", "url", "monitor_params", "byoc", "s3", "sh_configuration"]
+            if k not in ["client", "url", "monitor_params", "byoc", "s3", "sh_configuration", "geometries"]
         }
         return copy(subset_dict)
 
@@ -167,13 +165,12 @@ class ProcessAPI(Backend):
                 with MemoryFile(metrics) as memfile:
                     write_metric(memfile, self.s3, feature_id)
             print("5/6 Creating configuration")
-            self.sh_configuration = SHConfiguration(self.client, self.monitor_params.name, self.byoc_id)
             manager.add_resource(self.sh_configuration)
-            self.sh_configuration.create_instance()
+            self.instance_id = self.sh_configuration.create_instance()
             print("6/6 Creating layer")
             with DATA_PATH.joinpath("visualize_disturbed_date.cjs").open() as src:
                 evalscript = src.read()
-            self.sh_configuration.create_layer("DISTURBED-DATE", evalscript)
+            self.sh_configuration.create_layer("DISTURBED-DATE", evalscript, self.byoc_id)
             self.monitor_params.state = "INITIALIZED"
 
     def compute_models(self, geometry: dict) -> bytes:
@@ -330,6 +327,7 @@ class ProcessAPI(Backend):
         """
         self.s3.delete()
         self.byoc.delete()
+        self.sh_configuration.delete()
         self.monitor_params.state = "DELETED"
         self.dump()
 

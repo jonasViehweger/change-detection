@@ -186,8 +186,8 @@ class BYOC(Resource):
 
     def delete(self) -> None:
         """Delete the BYOC Collection"""
-        delete = self.client.delete(f"{self.url}/{self.byoc_id}")
-        delete.raise_for_status()
+        r = self.client.delete(f"{self.url}/{self.byoc_id}")
+        r.raise_for_status()
 
 
 class SHConfiguration(Resource):
@@ -195,12 +195,12 @@ class SHConfiguration(Resource):
         self,
         sh_client: SHClient,
         monitor_name: str,
-        byoc_id: str,
+        instance_id: str | None = None,
     ):
         self.client = sh_client
-        self.byoc_id = byoc_id
         self.monitor_name = monitor_name
         self.url = "https://services.sentinel-hub.com/configuration/v1/wms/instances"
+        self.instance_id = instance_id
 
     def create_instance(self) -> None:
         instance_data = {
@@ -214,8 +214,10 @@ class SHConfiguration(Resource):
             print(f"Request failed: {e.response.status_code} - {e.response.text}")
             raise
         self.instance_id = instance.json()["id"]
+        assert isinstance(self.instance_id, str)
+        return self.instance_id
 
-    def create_layer(self, title: str, evalscript: str) -> None:
+    def create_layer(self, title: str, evalscript: str, byoc_id: str) -> None:
         layer = {
             "title": title,
             "id": title.upper(),
@@ -231,7 +233,7 @@ class SHConfiguration(Resource):
             "styles": [{"name": "default", "description": "Default layer style", "evalScript": evalscript}],
             "instanceId": self.instance_id,
             "defaultStyleName": "default",
-            "datasourceDefaults": {"type": "CUSTOM", "mosaickingOrder": "mostRecent", "collectionId": self.byoc_id},
+            "datasourceDefaults": {"type": "CUSTOM", "mosaickingOrder": "mostRecent", "collectionId": byoc_id},
         }
         layer_response = self.client.post(f"{self.url}/{self.instance_id}/layers", json=layer)
         try:
@@ -243,5 +245,5 @@ class SHConfiguration(Resource):
 
     def delete(self) -> None:
         """Delete the Configuration"""
-        delete = self.client.delete(f"{self.url}/{self.instance_id}")
-        delete.raise_for_status()
+        r = self.client.delete(f"{self.url}/{self.instance_id}")
+        r.raise_for_status()
