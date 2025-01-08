@@ -7,7 +7,8 @@ from typing import Any, Literal
 import geopandas as gpd
 import toml
 
-from .backends import CONFIG_PATH, AsyncAPI, Backend, ProcessAPI
+from .backends import AsyncAPI, Backend, ProcessAPI
+from .constants import CONFIG_PATH, FEATURE_ID_COLUMN
 from .monitor_params import MonitorParameters
 
 
@@ -167,7 +168,7 @@ def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:  #
     return start_monitor(
         name=name,
         backend=backend,
-        id_column="MONITOR_FEATURE_ID",
+        id_column=FEATURE_ID_COLUMN,
         load_only=True,
         **config[f"{name}"],
         **config[f"{name}.{backend}"],
@@ -188,14 +189,19 @@ def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path:
     - bool: True if all values in the id_column are unique, False otherwise.
     """
     # Load the input geometry with GeoPandas
-    gdf = gpd.read_file(geometry_path).to_crs(epsg=3857).rename(columns={id_column: "MONITOR_FEATURE_ID"})
+    gdf = gpd.read_file(geometry_path).to_crs(epsg=3857).rename(columns={id_column: FEATURE_ID_COLUMN})
+
+    # Add WGS84 centroid
+    centroids = gdf.to_crs(epsg=4326).centroid
+    gdf["lat"] = centroids.y
+    gdf["lng"] = centroids.x
 
     # Check for any geometries which aren't POLYGONS
     if not all(gdf.geometry.type == "Polygon"):
         raise ValueError("All geometries must be of type POLYGON")
 
     # Check for uniqueness in the id_column
-    is_unique = gdf["MONITOR_FEATURE_ID"].is_unique
+    is_unique = gdf[FEATURE_ID_COLUMN].is_unique
     if not is_unique:
         raise ValueError("Duplicate ID found")
 

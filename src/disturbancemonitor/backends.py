@@ -5,7 +5,6 @@ import string
 import tarfile
 from copy import copy
 from dataclasses import asdict
-from importlib.resources import files
 from importlib.resources.abc import Traversable
 from io import BytesIO
 from pathlib import Path
@@ -15,11 +14,9 @@ import toml
 from rasterio.io import MemoryFile
 
 from .cog import write_metric, write_models, write_monitor
+from .constants import CONFIG_PATH, DATA_PATH, FEATURE_ID_COLUMN
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
-
-CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
-DATA_PATH = files("disturbancemonitor.data")
 
 
 class Backend:
@@ -150,7 +147,7 @@ class ProcessAPI(Backend):
             self.byoc_id = self.byoc.create_byoc()
             manager.add_resource(self.byoc)
             for feature in self.geometries.iterfeatures():
-                feature_id = feature["properties"]["MONITOR_FEATURE_ID"]
+                feature_id = feature["properties"][FEATURE_ID_COLUMN]
                 geometry = feature["geometry"]
                 print("2/6 Fitting model")
                 models = self.compute_models(geometry)
@@ -256,6 +253,41 @@ class ProcessAPI(Backend):
             "evalscript": evalscript,
         }
 
+    def update_feature(self, feature: dict, monitor_data_json: list) -> dict:
+        feature_id = feature["properties"][FEATURE_ID_COLUMN]
+        geometry = feature["geometry"]
+        monitor_request = self.base_request(
+            monitor_data_json, prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("predict.cjs")), geometry
+        )
+        # Get userdata (returns number of disturbed pixels during the monitoring)
+        monitor_request["output"]["responses"].append(
+            {"identifier": "userdata", "format": {"type": "application/json"}}
+        )
+        monitor_data = self.client.post(self.url, json=monitor_request, headers={"Accept": "application/tar"})
+        try:
+            monitor_data.raise_for_status()
+        except:
+            print(monitor_data.content)
+            raise
+
+        with tarfile.open(fileobj=BytesIO(monitor_data.content)) as tar:
+            # Find the userdata.json file
+            userdata_file = tar.extractfile("userdata.json")  # Extract it in memory
+            assert userdata_file
+            # Read the content of userdata.json
+            json_data = userdata_file.read().decode("utf-8")  # Decode from bytes to string
+
+            # Parse the JSON string into a dictionary
+            userdata_dict = json.loads(json_data)
+
+            # Find the default.tif file
+            output_tif = tar.extractfile("default.tif")  # Extract it in memory
+            assert output_tif
+            # Read and write the content of default.tif
+            with MemoryFile(output_tif.read()) as memfile:
+                write_monitor(memfile, self.s3, feature_id)
+        return userdata_dict
+
     def monitor(self, end: datetime.date | None = None) -> dict:
         if end is None:
             end = datetime.date.today()
@@ -283,43 +315,24 @@ class ProcessAPI(Backend):
                 "id": "beta",
             },
         ]
+        results = {}
         for feature in self.geometries.iterfeatures():
-            feature_id = feature["properties"]["MONITOR_FEATURE_ID"]
-            geometry = feature["geometry"]
-            monitor_request = self.base_request(
-                monitor_data_json, prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("predict.cjs")), geometry
+            user_data = self.update_feature(feature, monitor_data_json)
+            assert self.byoc_id
+            vis_url = self.sh_configuration.create_eob_link(
+                feature["properties"]["lat"],
+                feature["properties"]["lng"],
+                self.byoc_id,
+                "DISTURBED-DATE",
+                self.monitor_params.monitoring_start.strftime("%Y-%m-%d"),
             )
-            # Get userdata (returns number of disturbed pixels during the monitoring)
-            monitor_request["output"]["responses"].append(
-                {"identifier": "userdata", "format": {"type": "application/json"}}
-            )
-            monitor_data = self.client.post(self.url, json=monitor_request, headers={"Accept": "application/tar"})
-            try:
-                monitor_data.raise_for_status()
-            except:
-                print(monitor_data.content)
-                raise
-
-            with tarfile.open(fileobj=BytesIO(monitor_data.content)) as tar:
-                # Find the userdata.json file
-                userdata_file = tar.extractfile("userdata.json")  # Extract it in memory
-                assert userdata_file
-                # Read the content of userdata.json
-                json_data = userdata_file.read().decode("utf-8")  # Decode from bytes to string
-
-                # Parse the JSON string into a dictionary
-                userdata_dict = json.loads(json_data)
-
-                # Find the userdata.json file
-                output_tif = tar.extractfile("default.tif")  # Extract it in memory
-                assert output_tif
-                # Read the content of userdata.json
-                with MemoryFile(output_tif.read()) as memfile:
-                    write_monitor(memfile, self.s3, feature_id)
+            user_data["link"] = vis_url
+            feature_id = feature["properties"][FEATURE_ID_COLUMN]
+            results[feature_id] = user_data
 
         self.monitor_params.last_monitored = end
         self.dump()
-        return userdata_dict
+        return results
 
     def delete(self) -> None:
         """

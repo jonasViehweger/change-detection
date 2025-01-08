@@ -1,4 +1,4 @@
-import { evaluatePixel, preProcessScenes } from "../predict";
+import { evaluatePixel, preProcessScenes } from "../../src/disturbancemonitor/data/predict";
 import { collections } from "./collections.scenes.orbits";
 import { samples, beta } from "./samples";
 import "../utils/eval_utils";

@@ -46,4 +46,5 @@ def test_process_api(geojson_input):
     )
     del monitor
     monitor_reloaded = dm.load_monitor("pytestProcessAPI", backend="ProcessAPI")
-    monitor_reloaded.monitor(end=date(2024, 1, 1))
+    results = monitor_reloaded.monitor(end=date(2024, 1, 1))
+    print(results)

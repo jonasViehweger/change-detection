@@ -125,7 +125,7 @@ function preProcessScenes(collections) {
   return collections;
 }
 
-var newDisturbed = 0;
+var disturbed = {};
 
 function evaluatePixel(samples, scenes) {
   const b = samples.beta[0];
@@ -146,8 +146,9 @@ function evaluatePixel(samples, scenes) {
       const pred = dot(X, beta);
       process = updateProcessCCDC(pred, y, process, b.metric);
       if (process >= c.BOUND) {
-        newDisturbed++;
-        disturbedDate = dateToInt(scenes[c.DATASOURCE].scenes.orbits[i].dateFrom);
+        disturbedDate = dateToNumber(scenes[c.DATASOURCE].scenes.orbits[i].dateFrom);
+        const count = disturbed[disturbedDate] || 0;
+        disturbed[disturbedDate] = count + 1;
         break;
       }
     }
@@ -156,12 +157,12 @@ function evaluatePixel(samples, scenes) {
 }
 
 function updateOutputMetadata(scenes, inputMetadata, outputMetadata){
-  outputMetadata.userData = { "newDisturbed":  newDisturbed };
+  outputMetadata.userData = { "newDisturbed":  disturbed };
 }
 
-function dateToInt(datetimestring) {
+function dateToNumber(datetimestring) {
   // Converts an ISO datetime string to an int with format YYYYMMDD
-  return parseInt(datetimestring.split("T")[0].split("-").join(""));
+  return parseFloat(datetimestring.split("T")[0].split("-").join(""));
 }
 
 function updateProcessCCDC(pred, actual, process, rmse = 1) {
