@@ -243,6 +243,20 @@ class SHConfiguration(Resource):
             print(f"Request failed: {e.response.status_code} - {e.response.text}")
             raise
 
+    def create_eob_link(self, lat: float, lng: float, byoc_id: str, layer_id: str, date: str) -> str:
+        root_url = "https://apps.sentinel-hub.com/eo-browser/?"
+        query_params = {
+            "zoom": 16,
+            "lat": lat,
+            "lng": lng,
+            "themeId": self.instance_id,
+            "datasetId": byoc_id,
+            "fromTime": f"{date}T00:00:00.000Z",
+            "toTime": f"{date}T00:00:00.000Z",
+            "layerId": layer_id,
+        }
+        return root_url + "&".join([f"{k}={v}" for k, v in query_params.items()])
+
     def delete(self) -> None:
         """Delete the Configuration"""
         r = self.client.delete(f"{self.url}/{self.instance_id}")

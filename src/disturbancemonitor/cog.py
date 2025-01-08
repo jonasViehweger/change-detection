@@ -17,7 +17,7 @@ def write_metric(in_path: str | os.PathLike, s3_resource: S3, feature_id: str | 
             # Create a new file to write to
             with rasterio.open(out, "w", **profile) as dst:
                 dst.write(src.read())
-            s3_resource.write_binary(f"{s3_resource.root}/{feature_id},metric.tif", out)
+            s3_resource.write_binary(f"{s3_resource.root}/{feature_id}/metric.tif", out)
 
 
 def write_monitor(in_path: str | os.PathLike, s3_resource: S3, feature_id: str | int) -> None:

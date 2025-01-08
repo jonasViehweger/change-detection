@@ -1,4 +1,4 @@
-import {evaluatePixel, preProcessScenes} from "../beta"
+import {evaluatePixel, preProcessScenes} from "../../src/disturbancemonitor/data/beta";
 import {collections} from "./collections.scenes.orbits"
 import {samples, beta} from "./samples"
 
