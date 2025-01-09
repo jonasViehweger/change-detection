@@ -91,12 +91,13 @@ class ProcessAPI(Backend):
         instance_id: str | None = None,
         s3_profile: str | None = None,
         sh_profile: str = "default-profile",
-        endpoint: EndpointTypes = "Sentinel Hub",
+        endpoint: EndpointTypes = "SENTINEL_HUB",
         monitor_id: str | None = None,
         rollback: bool = True,
     ) -> None:
+        self.endpoint = endpoint
         self.urls = Endpoints[endpoint].value
-        self.url = self.urls.base_url + "api/v1/process"
+        self.url = self.urls.base_url + "/api/v1/process"
 
         self.monitor_id = monitor_id or "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.monitor_id).lower()
@@ -118,7 +119,7 @@ class ProcessAPI(Backend):
         subset_dict = {
             k: v
             for k, v in self.__dict__.items()
-            if k not in ["client", "url", "monitor_params", "byoc", "s3", "sh_configuration", "geometries"]
+            if k not in ["client", "url", "urls", "monitor_params", "byoc", "s3", "sh_configuration", "geometries"]
         }
         return copy(subset_dict)
 
@@ -126,13 +127,13 @@ class ProcessAPI(Backend):
         with ResourceManager(rollback=self.rollback) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
-            self.s3.create_bucket()
+            self.s3.create_bucket(self.urls.bucket_location)
             self.s3.update_policy(
                 new_statements=[
                     {
                         "Sid": "Disturbance Monitor BYOC Permissions",
                         "Effect": "Allow",
-                        "Principal": {"AWS": "arn:aws:iam::614251495211:root"},
+                        "Principal": {"AWS": self.urls.byoc_principal},
                         "Action": [
                             "s3:GetBucketLocation",
                             "s3:ListBucket",

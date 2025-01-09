@@ -1,8 +1,16 @@
 from datetime import date
 
 import pytest
+from dotenv import find_dotenv, load_dotenv
 
 import disturbancemonitor as dm
+
+
+@pytest.fixture(scope="session", autouse=True)
+def load_env(request):
+    """Load the appropriate .env file based on the parameter passed to pytest."""
+    env_file = find_dotenv(request.param)
+    load_dotenv(env_file)
 
 
 @pytest.fixture
@@ -34,17 +42,27 @@ def geojson_input(tmp_path):
     return input_file
 
 
-def test_process_api(geojson_input):
+@pytest.mark.parametrize(
+    "load_env, endpoint",
+    [
+        (".env.tests.sh", "SENTINEL_HUB"),  # First test with AWS
+        (".env.tests.cdse", "CDSE"),  # Second test with CDSE
+    ],
+    indirect=["load_env"],  # Use the load_env fixture indirectly
+)
+def test_process_api(load_env, endpoint, geojson_input):
+    monitor_name = f"pytestProcessAPI{endpoint.replace("_", "")}"
     monitor = dm.start_monitor(
-        name="pytestProcessAPI",
+        name=monitor_name,
         monitoring_start=date(2023, 1, 1),
         geometry_path=geojson_input,
         id_column="id",
         backend="ProcessAPI",
         overwrite=True,
         resolution=100,
+        endpoint=endpoint,
     )
     del monitor
-    monitor_reloaded = dm.load_monitor("pytestProcessAPI", backend="ProcessAPI")
+    monitor_reloaded = dm.load_monitor(monitor_name, backend="ProcessAPI")
     results = monitor_reloaded.monitor(end=date(2024, 1, 1))
     print(results)

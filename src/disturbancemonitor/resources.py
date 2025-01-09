@@ -60,7 +60,7 @@ class S3(Resource):
         self.root = f"s3://{self.bucket_name}/{self.folder_name}"
         self.s3fs = s3fs.S3FileSystem(anon=False, profile=profile)
         self.session = boto3.session.Session(profile_name=profile)
-        self.client = self.session.client("s3", region_name="eu-central-1")
+        self.client = self.session.client("s3")
 
     def update_policy(self, new_statements: list) -> None:
         # Get bucket policy
@@ -78,10 +78,9 @@ class S3(Resource):
         # Set the new policy
         self.client.put_bucket_policy(Bucket=self.bucket_name, Policy=new_policy)
 
-    def create_bucket(self) -> None:
-        location = {"LocationConstraint": "eu-central-1"}
+    def create_bucket(self, bucket_location) -> None:
         with suppress(self.client.exceptions.BucketAlreadyOwnedByYou):
-            self.client.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=location)
+            self.client.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=bucket_location)
 
     def write_binary(self, filename: str, binary: BytesIO) -> None:
         with self.s3fs.open(filename, "wb") as f:
