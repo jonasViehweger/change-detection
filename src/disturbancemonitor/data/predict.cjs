@@ -35,6 +35,11 @@ function dot(A, B) {
     return result;
   }
 
+function dateToNumber(datetimestring) {
+    // Converts an ISO datetime string to an int with format YYYYMMDD
+    return parseFloat(datetimestring.split("T")[0].slice(2).split("-").join(""));
+  }
+
 var dataSources = {
     ARPS: {
         validBands: ["dataMask"],
@@ -158,11 +163,6 @@ function evaluatePixel(samples, scenes) {
 
 function updateOutputMetadata(scenes, inputMetadata, outputMetadata){
   outputMetadata.userData = { "newDisturbed":  disturbed };
-}
-
-function dateToNumber(datetimestring) {
-  // Converts an ISO datetime string to an int with format YYYYMMDD
-  return parseFloat(datetimestring.split("T")[0].split("-").join(""));
 }
 
 function updateProcessCCDC(pred, actual, process, rmse = 1) {
