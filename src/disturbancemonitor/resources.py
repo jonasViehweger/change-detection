@@ -99,7 +99,7 @@ class S3(Resource):
 
 
 class SHClient:
-    def __init__(self, profile: str = "default-profile") -> None:
+    def __init__(self, auth_url: str, profile: str = "default-profile") -> None:
         """
         Initializes a new instance of SHClient. This class takes care of handling the OAuth2 authentication with
         Sentinel Hub services. First priority is given to the environment variables SH_CLIENT_ID and SH_CLIENT_SECRET.
@@ -116,11 +116,12 @@ class SHClient:
             with open(Path().home() / ".config" / "sentinelhub" / "config.toml") as configfile:
                 sh_config = toml.load(configfile)[profile]
             self.client = OAuth2Session(sh_config["sh_client_id"], sh_config["sh_client_secret"])
-        self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
+        self.auth_url = auth_url
+        self.client.fetch_token(self.auth_url)
 
     def get_token(self) -> None:
         if self.client.token.is_expired():
-            self.client.fetch_token("https://services.sentinel-hub.com/auth/realms/main/protocol/openid-connect/token")
+            self.client.fetch_token(self.auth_url)
 
     def post(self, *args: Any, **kwargs: Any) -> Response:
         self.get_token()
@@ -138,6 +139,7 @@ class SHClient:
 class BYOC(Resource):
     def __init__(
         self,
+        base_url: str,
         bucket_name: str,
         folder_name: str,
         sh_client: SHClient,
@@ -147,7 +149,7 @@ class BYOC(Resource):
         self.bucket_name = bucket_name
         self.client = sh_client
         self.byoc_id = byoc_id
-        self.url = "https://services.sentinel-hub.com/api/v1/byoc/collections"
+        self.url = base_url + "/api/v1/byoc/collections"
 
     def create_byoc(self) -> str:
         new_collection = {"name": self.folder_name, "s3Bucket": self.bucket_name}
@@ -193,13 +195,15 @@ class BYOC(Resource):
 class SHConfiguration(Resource):
     def __init__(
         self,
+        base_url: str,
         sh_client: SHClient,
         monitor_name: str,
         instance_id: str | None = None,
     ):
         self.client = sh_client
         self.monitor_name = monitor_name
-        self.url = "https://services.sentinel-hub.com/configuration/v1/wms/instances"
+        self.base_url = base_url
+        self.url = base_url + "/configuration/v1"
         self.instance_id = instance_id
 
     def create_instance(self) -> str:
@@ -207,7 +211,7 @@ class SHConfiguration(Resource):
             "name": f"Disturbance Monitor - {self.monitor_name}",
             "description": "Output of the disturbance monitoring",
         }
-        instance = self.client.post(self.url, json=instance_data)
+        instance = self.client.post(self.url + "/wms/instances", json=instance_data)
         try:
             instance.raise_for_status()
         except HTTPError as e:
@@ -223,19 +227,19 @@ class SHConfiguration(Resource):
             "id": title.upper(),
             "description": "",
             "datasetSource": {
-                "@id": "https://services.sentinel-hub.com/configuration/v1/datasets/CUSTOM/sources/10",
+                "@id": f"{self.url}/datasets/CUSTOM/sources/10",
                 "id": 10,
                 "description": "Bring Your Own COG",
-                "settings": {"indexServiceUrl": "https://services.sentinel-hub.com/byoc"},
-                "dataset": {"@id": "https://services.sentinel-hub.com/configuration/v1/datasets/CUSTOM"},
+                "settings": {"indexServiceUrl": f"{self.base_url}/byoc"},
+                "dataset": {"@id": f"{self.url}/datasets/CUSTOM"},
             },
-            "dataset": {"@id": "https://services.sentinel-hub.com/configuration/v1/datasets/CUSTOM"},
+            "dataset": {"@id": f"{self.url}/datasets/CUSTOM"},
             "styles": [{"name": "default", "description": "Default layer style", "evalScript": evalscript}],
             "instanceId": self.instance_id,
             "defaultStyleName": "default",
             "datasourceDefaults": {"type": "CUSTOM", "mosaickingOrder": "mostRecent", "collectionId": byoc_id},
         }
-        layer_response = self.client.post(f"{self.url}/{self.instance_id}/layers", json=layer)
+        layer_response = self.client.post(f"{self.url}/wms/instances/{self.instance_id}/layers", json=layer)
         try:
             layer_response.raise_for_status()
         except HTTPError as e:
@@ -243,8 +247,7 @@ class SHConfiguration(Resource):
             print(f"Request failed: {e.response.status_code} - {e.response.text}")
             raise
 
-    def create_eob_link(self, lat: float, lng: float, byoc_id: str, layer_id: str, date: str) -> str:
-        root_url = "https://apps.sentinel-hub.com/eo-browser/?"
+    def create_vis_link(self, root_url: str, lat: float, lng: float, byoc_id: str, layer_id: str, date: str) -> str:
         query_params = {
             "zoom": 16,
             "lat": lat,
@@ -259,5 +262,5 @@ class SHConfiguration(Resource):
 
     def delete(self) -> None:
         """Delete the Configuration"""
-        r = self.client.delete(f"{self.url}/{self.instance_id}")
+        r = self.client.delete(f"{self.url}/wms/instances/{self.instance_id}")
         r.raise_for_status()

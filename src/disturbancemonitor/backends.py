@@ -14,7 +14,7 @@ import toml
 from rasterio.io import MemoryFile
 
 from .cog import write_metric, write_models, write_monitor
-from .constants import CONFIG_PATH, DATA_PATH, FEATURE_ID_COLUMN
+from .constants import CONFIG_PATH, DATA_PATH, FEATURE_ID_COLUMN, Endpoints, EndpointTypes
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
 
@@ -91,24 +91,27 @@ class ProcessAPI(Backend):
         instance_id: str | None = None,
         s3_profile: str | None = None,
         sh_profile: str = "default-profile",
+        endpoint: EndpointTypes = "Sentinel Hub",
         monitor_id: str | None = None,
         rollback: bool = True,
     ) -> None:
+        self.urls = Endpoints[endpoint].value
+        self.url = self.urls.base_url + "api/v1/process"
+
         self.monitor_id = monitor_id or "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.monitor_id).lower()
         self.folder_name = folder_name or (monitor_params.name).lower()
         self.s3_profile = s3_profile
         self.sh_profile = sh_profile
-        self.client = SHClient(self.sh_profile)
+        self.client = SHClient(self.urls.auth_url, self.sh_profile)
         self.byoc_id = byoc_id
         self.instance_id = instance_id
-        self.byoc = BYOC(self.bucket_name, self.folder_name, self.client, self.byoc_id)
+        self.byoc = BYOC(self.urls.base_url, self.bucket_name, self.folder_name, self.client, self.byoc_id)
         self.s3 = S3(self.bucket_name, self.folder_name, self.s3_profile)
-        self.sh_configuration = SHConfiguration(self.client, monitor_params.name, self.instance_id)
+        self.sh_configuration = SHConfiguration(self.urls.base_url, self.client, monitor_params.name, self.instance_id)
         self.rollback = rollback
         self.geometries = gpd.read_file(monitor_params.geometry_path)
 
-        self.url = "https://services.sentinel-hub.com/api/v1/process"
         super().__init__(monitor_params)
 
     def as_dict(self) -> dict:
@@ -319,7 +322,8 @@ class ProcessAPI(Backend):
         for feature in self.geometries.iterfeatures():
             user_data = self.update_feature(feature, monitor_data_json)
             assert self.byoc_id
-            vis_url = self.sh_configuration.create_eob_link(
+            vis_url = self.sh_configuration.create_vis_link(
+                self.urls.vis_url,
                 feature["properties"]["lat"],
                 feature["properties"]["lng"],
                 self.byoc_id,
