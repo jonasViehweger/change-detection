@@ -1,5 +1,6 @@
 import makeRegression from "../utils/makeRegression";
 import dot from "../utils/dot";
+import dateToNumber from "../utils/dateToNumber";
 import { dataSources } from "../utils/datasources";
 
 const c =
@@ -84,11 +85,6 @@ function evaluatePixel(samples, scenes) {
 
 function updateOutputMetadata(scenes, inputMetadata, outputMetadata){
   outputMetadata.userData = { "newDisturbed":  disturbed }
-}
-
-function dateToNumber(datetimestring) {
-  // Converts an ISO datetime string to an int with format YYYYMMDD
-  return parseFloat(datetimestring.split("T")[0].split("-").join(""));
 }
 
 function updateProcessCCDC(pred, actual, process, rmse = 1) {

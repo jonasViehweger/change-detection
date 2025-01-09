@@ -1,4 +1,8 @@
+import dateToNumber from "../utils/dateToNumber";
+
 //VERSION=3
+var lastMonitored = "2024-01-01"
+
 function setup() {
   return {
     input: ["disturbedDate", "dataMask"],
@@ -11,16 +15,19 @@ function setup() {
   };
 }
 
+const end = dateToNumber(lastMonitored)
+const start = end - 10000;
+
 const ramp = [
-  [20230101, 0xffffd9],
-  [20230215, 0xedf8b1],
-  [20230401, 0xc7e9b4],
-  [20230519, 0x7fcdbb],
-  [20230703, 0x41b6c4],
-  [20230817, 0x1d91c0],
-  [20231001, 0x225ea8],
-  [20231115, 0x253494],
-  [20231231, 0x081d58],
+  [start, 0xffffd9],
+  // [20230215, 0xedf8b1],
+  // [20230401, 0xc7e9b4],
+  // [20230519, 0x7fcdbb],
+  // [20230703, 0x41b6c4],
+  // [20230817, 0x1d91c0],
+  // [20231001, 0x225ea8],
+  // [20231115, 0x253494],
+  [end, 0x081d58],
 ];
 
 const visualizer = new ColorRampVisualizer(ramp);
