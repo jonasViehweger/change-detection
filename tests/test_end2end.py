@@ -1,16 +1,18 @@
 from datetime import date
 
 import pytest
-from dotenv import find_dotenv, load_dotenv
+from dotenv import dotenv_values
 
 import disturbancemonitor as dm
 
 
-@pytest.fixture(scope="session", autouse=True)
-def load_env(request):
-    """Load the appropriate .env file based on the parameter passed to pytest."""
-    env_file = find_dotenv(request.param)
-    load_dotenv(env_file)
+@pytest.fixture
+def load_env(monkeypatch, request):
+    """Load the specified .env file and apply its variables using monkeypatch."""
+    env_file = request.param
+    env_vars = dotenv_values(env_file)  # Read variables from the .env file
+    for key, value in env_vars.items():
+        monkeypatch.setenv(key, value)  # Set each variable in the test environment
 
 
 @pytest.fixture
@@ -43,14 +45,14 @@ def geojson_input(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "load_env, endpoint",
+    ("load_env", "endpoint"),
     [
         (".env.tests.sh", "SENTINEL_HUB"),  # First test with AWS
         (".env.tests.cdse", "CDSE"),  # Second test with CDSE
     ],
     indirect=["load_env"],  # Use the load_env fixture indirectly
 )
-def test_process_api(load_env, endpoint, geojson_input):
+def test_process_api(load_env, endpoint, geojson_input):  # noqa: ARG001
     monitor_name = f"pytestProcessAPI{endpoint.replace("_", "")}"
     monitor = dm.start_monitor(
         name=monitor_name,

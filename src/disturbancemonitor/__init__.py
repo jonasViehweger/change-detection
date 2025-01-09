@@ -8,7 +8,7 @@ import geopandas as gpd
 import toml
 
 from .backends import AsyncAPI, Backend, ProcessAPI
-from .constants import CONFIG_PATH, FEATURE_ID_COLUMN
+from .constants import CONFIG_PATH, FEATURE_ID_COLUMN, EndpointTypes
 from .monitor_params import MonitorParameters
 
 
@@ -58,6 +58,7 @@ def start_monitor(
     sensitivity: float = 5.0,
     boundary: float = 5.0,
     backend: BackendTypes = "ProcessAPI",
+    endpoint: EndpointTypes = "SENTINEL_HUB",
     overwrite: bool = False,
     load_only: bool = False,
     **kwargs: Any,
@@ -120,6 +121,7 @@ def start_monitor(
         sensitivity=sensitivity,
         boundary=boundary,
         last_monitored=last_monitored,
+        endpoint=endpoint,
         **filtered_monitor_kwargs,
     )
 

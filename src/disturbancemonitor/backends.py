@@ -14,7 +14,7 @@ import toml
 from rasterio.io import MemoryFile
 
 from .cog import write_metric, write_models, write_monitor
-from .constants import CONFIG_PATH, DATA_PATH, FEATURE_ID_COLUMN, Endpoints, EndpointTypes
+from .constants import CONFIG_PATH, DATA_PATH, FEATURE_ID_COLUMN, Endpoints
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
 
@@ -91,12 +91,10 @@ class ProcessAPI(Backend):
         instance_id: str | None = None,
         s3_profile: str | None = None,
         sh_profile: str = "default-profile",
-        endpoint: EndpointTypes = "SENTINEL_HUB",
         monitor_id: str | None = None,
         rollback: bool = True,
     ) -> None:
-        self.endpoint = endpoint
-        self.urls = Endpoints[endpoint].value
+        self.urls = Endpoints[monitor_params.endpoint].value
         self.url = self.urls.base_url + "/api/v1/process"
 
         self.monitor_id = monitor_id or "".join(random.choices(string.ascii_lowercase + string.digits, k=8))

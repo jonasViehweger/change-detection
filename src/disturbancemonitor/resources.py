@@ -78,9 +78,12 @@ class S3(Resource):
         # Set the new policy
         self.client.put_bucket_policy(Bucket=self.bucket_name, Policy=new_policy)
 
-    def create_bucket(self, bucket_location) -> None:
+    def create_bucket(self, bucket_location: dict | None) -> None:
         with suppress(self.client.exceptions.BucketAlreadyOwnedByYou):
-            self.client.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=bucket_location)
+            if bucket_location is None:
+                self.client.create_bucket(Bucket=self.bucket_name)
+            else:
+                self.client.create_bucket(Bucket=self.bucket_name, CreateBucketConfiguration=bucket_location)
 
     def write_binary(self, filename: str, binary: BytesIO) -> None:
         with self.s3fs.open(filename, "wb") as f:
