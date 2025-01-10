@@ -1,8 +1,18 @@
 from datetime import date
 
 import pytest
+from dotenv import dotenv_values
 
 import disturbancemonitor as dm
+
+
+@pytest.fixture
+def load_env(monkeypatch, request):
+    """Load the specified .env file and apply its variables using monkeypatch."""
+    env_file = request.param
+    env_vars = dotenv_values(env_file)  # Read variables from the .env file
+    for key, value in env_vars.items():
+        monkeypatch.setenv(key, value)  # Set each variable in the test environment
 
 
 @pytest.fixture
@@ -34,17 +44,27 @@ def geojson_input(tmp_path):
     return input_file
 
 
-def test_process_api(geojson_input):
+@pytest.mark.parametrize(
+    ("load_env", "endpoint"),
+    [
+        (".env.tests.sh", "SENTINEL_HUB"),  # First test with AWS
+        (".env.tests.cdse", "CDSE"),  # Second test with CDSE
+    ],
+    indirect=["load_env"],  # Use the load_env fixture indirectly
+)
+def test_process_api(load_env, endpoint, geojson_input):  # noqa: ARG001
+    monitor_name = f"pytestProcessAPI{endpoint.replace("_", "")}"
     monitor = dm.start_monitor(
-        name="pytestProcessAPI",
+        name=monitor_name,
         monitoring_start=date(2023, 1, 1),
         geometry_path=geojson_input,
         id_column="id",
         backend="ProcessAPI",
         overwrite=True,
         resolution=100,
+        endpoint=endpoint,
     )
     del monitor
-    monitor_reloaded = dm.load_monitor("pytestProcessAPI", backend="ProcessAPI")
+    monitor_reloaded = dm.load_monitor(monitor_name, backend="ProcessAPI")
     results = monitor_reloaded.monitor(end=date(2024, 1, 1))
     print(results)

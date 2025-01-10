@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from os import PathLike
 from typing import Literal
 
+from .constants import EndpointTypes
+
 datasource_ids = {"S2L2A": "sentinel-2-l2a"}
 
 
@@ -20,6 +22,7 @@ class MonitorParameters:
     metric: Literal["RMSE"] = "RMSE"
     sensitivity: float = 5
     boundary: float = 5
+    endpoint: EndpointTypes = "SENTINEL_HUB"
     state: str = "NOT_INITIALIZED"
 
     def __post_init__(self) -> None:
