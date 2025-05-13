@@ -184,7 +184,7 @@ class BYOC(Resource):
                 break
             if status == "FAILED":
                 raise RuntimeError(
-                    f'Ingestion of tile failed: {tile["data"]["additionalData"]["failedIngestionCause"]}'
+                    f"Ingestion of tile failed: {tile['data']['additionalData']['failedIngestionCause']}"
                 )
         print("... Ingested")
 

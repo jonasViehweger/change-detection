@@ -53,7 +53,7 @@ def geojson_input(tmp_path):
     indirect=["load_env"],  # Use the load_env fixture indirectly
 )
 def test_process_api(load_env, endpoint, geojson_input):  # noqa: ARG001
-    monitor_name = f"pytestProcessAPI{endpoint.replace("_", "")}"
+    monitor_name = f"pytestProcessAPI{endpoint.replace('_', '')}"
     monitor = dm.start_monitor(
         name=monitor_name,
         monitoring_start=date(2023, 1, 1),
