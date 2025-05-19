@@ -191,7 +191,8 @@ class BYOC(Resource):
     def delete(self) -> None:
         """Delete the BYOC Collection"""
         r = self.client.delete(f"{self.url}/{self.byoc_id}")
-        r.raise_for_status()
+        with suppress(HTTPError):
+            r.raise_for_status()
 
 
 class SHConfiguration(Resource):
@@ -265,4 +266,5 @@ class SHConfiguration(Resource):
     def delete(self) -> None:
         """Delete the Configuration"""
         r = self.client.delete(f"{self.url}/wms/instances/{self.instance_id}")
-        r.raise_for_status()
+        with suppress(HTTPError):
+            r.raise_for_status()

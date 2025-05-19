@@ -122,6 +122,8 @@ class ProcessAPI(Backend):
         return copy(subset_dict)
 
     def init_model(self) -> None:
+        self.monitor_params.state = "INITIALIZING"
+        self.dump()
         with ResourceManager(rollback=self.rollback) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
@@ -291,6 +293,9 @@ class ProcessAPI(Backend):
         return userdata_dict
 
     def monitor(self, end: datetime.date | None = None) -> dict:
+        # TODO make this a context manager, so if updating fails, it resets to initialized
+        self.monitor_params.state = "UPDATING"
+        self.dump()
         if end is None:
             end = datetime.date.today()
         start = self.monitor_params.last_monitored
@@ -334,6 +339,7 @@ class ProcessAPI(Backend):
             results[feature_id] = user_data
 
         self.monitor_params.last_monitored = end
+        self.monitor_params.state = "INITIALIZED"
         self.dump()
         return results
 
@@ -341,6 +347,8 @@ class ProcessAPI(Backend):
         """
         Deletes the S3 Folder for the monitor and the SH BYOC collection
         """
+        self.monitor_params.state = "DELETING"
+        self.dump()
         self.s3.delete()
         self.byoc.delete()
         self.sh_configuration.delete()
