@@ -4,17 +4,20 @@ import random
 import string
 import tarfile
 from copy import copy
-from dataclasses import asdict
 from importlib.resources.abc import Traversable
 from io import BytesIO
 from pathlib import Path
 
 import geopandas as gpd
-import toml
 from rasterio.io import MemoryFile
 
 from .cog import write_metric, write_models, write_monitor
-from .constants import CONFIG_PATH, DATA_PATH, FEATURE_ID_COLUMN, Endpoints
+from .constants import DATA_PATH, FEATURE_ID_COLUMN, Endpoints
+from .db import (
+    save_backend_config,
+    save_monitor_params,
+    update_monitor_state,
+)
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
 
@@ -36,28 +39,17 @@ class Backend:
         raise NotImplementedError
 
     def dump(self) -> None:
-        CONFIG_PATH.mkdir(parents=True, exist_ok=True)
-        toml_path = CONFIG_PATH / "config.toml"
-
-        # Get the saved toml if it already exists:
-        if (toml_path).exists():
-            with open(toml_path) as configfile:
-                config = toml.load(configfile)
-        else:
-            config = {}
-
+        """
+        Save backend configuration and monitor parameters to the database.
+        """
         backend_dict = self.as_dict()
-        params_dict = asdict(self.monitor_params)
-        name = params_dict.pop("name")
+        backend_type = type(self).__name__
 
-        config.update(
-            {
-                name: params_dict,
-                f"{name}.{type(self).__name__}": backend_dict,
-            }
-        )
-        with open(CONFIG_PATH / "config.toml", "w") as configfile:
-            toml.dump(config, configfile)
+        # Save monitor parameters
+        save_monitor_params(self.monitor_params)
+
+        # Save backend configuration
+        save_backend_config(self.monitor_params.name, backend_type, backend_dict)
 
     def delete(self) -> None:
         """
@@ -122,6 +114,7 @@ class ProcessAPI(Backend):
         return copy(subset_dict)
 
     def init_model(self) -> None:
+        update_monitor_state(self.monitor_params.name, "INITIALIZING")
         self.monitor_params.state = "INITIALIZING"
         self.dump()
         with ResourceManager(rollback=self.rollback) as manager:
@@ -173,6 +166,8 @@ class ProcessAPI(Backend):
                 evalscript = src.read()
             self.sh_configuration.create_layer("DISTURBED-DATE", evalscript, self.byoc_id)
             self.monitor_params.state = "INITIALIZED"
+            update_monitor_state(self.monitor_params.name, "INITIALIZED")
+            self.dump()
 
     def compute_models(self, geometry: dict) -> bytes:
         beta_data = [
@@ -293,7 +288,7 @@ class ProcessAPI(Backend):
         return userdata_dict
 
     def monitor(self, end: datetime.date | None = None) -> dict:
-        # TODO make this a context manager, so if updating fails, it resets to initialized
+        update_monitor_state(self.monitor_params.name, "UPDATING")
         self.monitor_params.state = "UPDATING"
         self.dump()
         if end is None:
@@ -340,6 +335,7 @@ class ProcessAPI(Backend):
 
         self.monitor_params.last_monitored = end
         self.monitor_params.state = "INITIALIZED"
+        update_monitor_state(self.monitor_params.name, "INITIALIZED")
         self.dump()
         return results
 
@@ -347,12 +343,14 @@ class ProcessAPI(Backend):
         """
         Deletes the S3 Folder for the monitor and the SH BYOC collection
         """
+        update_monitor_state(self.monitor_params.name, "DELETING")
         self.monitor_params.state = "DELETING"
         self.dump()
         self.s3.delete()
         self.byoc.delete()
         self.sh_configuration.delete()
         self.monitor_params.state = "DELETED"
+        update_monitor_state(self.monitor_params.name, "DELETED")
         self.dump()
 
 

@@ -5,10 +5,17 @@ from pathlib import Path
 from typing import Any, Literal
 
 import geopandas as gpd
-import toml
 
 from .backends import AsyncAPI, Backend, ProcessAPI
 from .constants import CONFIG_PATH, FEATURE_ID_COLUMN, EndpointTypes
+from .db import (
+    backend_exists,
+    init_db,
+    load_backend_config,
+    load_monitor_params,
+    migrate_toml_to_sqlite,
+    save_monitor_params,
+)
 from .monitor_params import MonitorParameters
 
 
@@ -32,12 +39,20 @@ def initialize_monitor(
     Parameters:
         params (MonitorParameters): Parameters for the monitor.
         backend (BackendTypes): Backend type to use.
+        input_path (str | PathLike): Path to the input geometry file.
+        id_column (str): Name of the ID column in the geometry file.
         **kwargs: Additional arguments for the backend.
 
     Returns:
         Backend: Initialized backend instance.
     """
-    prepare_geometry(input_path, id_column, params.geometry_path)
+    # Convert path-like objects to strings
+    input_path_str = str(input_path) if isinstance(input_path, PathLike) else input_path
+    geometry_path_str = (
+        str(params.geometry_path) if isinstance(params.geometry_path, PathLike) else params.geometry_path
+    )
+
+    prepare_geometry(input_path_str, id_column, geometry_path_str)
     backend_instance = BACKENDS[backend](params, **kwargs)
     backend_instance.init_model()
     backend_instance.dump()
@@ -67,8 +82,8 @@ def start_monitor(
     Initialize disturbance monitoring
 
     This function is used to first initialize a disturbance monitor.
-    The parameters used to initialize the monitor are saved in the config file
-    at ~/.configs/disturbancemonitor/config.toml.
+    The parameters used to initialize the monitor are saved in the SQLite database
+    at ~/.configs/disturbancemonitor/config.db.
 
     During initializing, models will be fit for each pixel in the area of interest.
     This is the most processing intensive step of the monitoring. When loading
@@ -76,7 +91,7 @@ def start_monitor(
     again. Instead only the model weights are loaded.
 
     Args:
-        name (str): Name of the monitor. Must be a unique name in the config file.
+        name (str): Name of the monitor. Must be a unique name in the database.
             Use `.load_monitor()` to load an already existing monitor.
         monitoring_start (datetime.date): Start of the monitoring. The model will
             be fit on the year before `monitoring_start`.
@@ -97,10 +112,16 @@ def start_monitor(
             10000x10000 and doesn't time out as quickly.
         overwrite (bool): If an already existing monitor should be overwritten.
     """
-    config = load_config()
-    config_exists = name in config
-    backend_exists = f"{name}.{backend}" in config
-    is_initialized = config.get(name, {}).get("state") == "INITIALIZED"
+    # Initialize database and migrate existing TOML configs if needed
+    init_db()
+
+    # Check if it's the first time running with SQLite
+    toml_config_path = CONFIG_PATH / "config.toml"
+    if toml_config_path.exists():
+        migrate_toml_to_sqlite()
+
+    # Check if monitor exists in database
+    monitor_exists, backend_exists_flag, is_initialized = backend_exists(name, backend)
 
     monitor_param_fields = {f.name for f in fields(MonitorParameters)}
     last_monitored = kwargs.pop("last_monitored", monitoring_start)
@@ -126,16 +147,21 @@ def start_monitor(
     )
 
     if load_only:
+        save_monitor_params(params)
         return BACKENDS[backend](params, **backend_kwargs)
 
-    if config_exists and backend_exists and is_initialized and not overwrite:
+    if monitor_exists and backend_exists_flag and is_initialized and not overwrite:
         raise MonitorInitializationError(
             f"Monitor with name '{name}' and backend '{backend}' already exists. "
             f"Use load_monitor('{name}', backend='{backend}') or set overwrite=True."
         )
 
-    if config_exists and backend_exists and overwrite:
-        backend_instance = BACKENDS[backend](params, **backend_kwargs, **config[f"{name}.{backend}"])
+    if monitor_exists and backend_exists_flag and overwrite:
+        # Load existing backend config
+        backend_config = load_backend_config(name, backend)
+
+        # Create backend instance with loaded config
+        backend_instance = BACKENDS[backend](params, **backend_kwargs, **backend_config)
         print("Deleting resources")
         backend_instance.delete()
         return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
@@ -143,37 +169,35 @@ def start_monitor(
     return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
 
 
-def load_config() -> dict:
-    """Loads config from toml file as dict"""
-    config_toml = CONFIG_PATH / "config.toml"
-    try:
-        with open(config_toml) as configfile:
-            return toml.load(configfile)
-    except FileNotFoundError:
-        CONFIG_PATH.mkdir(parents=True, exist_ok=True)
-        config_toml.touch()
-        return {}
-
-
-def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:  # TODO: backend sollte mit gedumpt werden
+def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:
     """
-    Load Monitor from config
+    Load Monitor from database
 
-    This loads a monitor object from the config file at
-    ~/.disturbancemonitor/config.toml.
+    This loads a monitor object from the config database at
+    ~/.disturbancemonitor/config.db.
 
     Args:
-        name (str): Name of the monitor, as saved in the config file
+        name (str): Name of the monitor, as saved in the database
         backend (backend): Which backend to use for the monitor.
     """
-    config = load_config()
+    # Initialize database and migrate existing TOML configs if needed
+    init_db()
+
+    # Check if it's the first time running with SQLite
+    toml_config_path = CONFIG_PATH / "config.toml"
+    if toml_config_path.exists():
+        migrate_toml_to_sqlite()
+
+    # Load monitor params and backend config from database
+    monitor_config = load_monitor_params(name)
+    backend_config = load_backend_config(name, backend)
+
     return start_monitor(
-        name=name,
         backend=backend,
         id_column=FEATURE_ID_COLUMN,
         load_only=True,
-        **config[f"{name}"],
-        **config[f"{name}.{backend}"],
+        **monitor_config,
+        **backend_config,
     )
 
 
@@ -183,15 +207,19 @@ def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path:
     check if all values in the id column are unique, and write it to a GeoPackage.
 
     Parameters:
-    - input_path (str): Path to the input geometry file.
+    - geometry_path (str | PathLike): Path to the input geometry file.
     - id_column (str): The name of the column to be used as the ID column.
-    - output_path (str): Path to the output GeoPackage file.
+    - output_path (str | PathLike): Path to the output GeoPackage file.
 
     Returns:
-    - bool: True if all values in the id_column are unique, False otherwise.
+    - None
     """
+    # Convert path-like objects to strings
+    geometry_path_str = str(geometry_path) if isinstance(geometry_path, PathLike) else geometry_path
+    output_path_str = str(output_path) if isinstance(output_path, PathLike) else output_path
+
     # Load the input geometry with GeoPandas
-    gdf = gpd.read_file(geometry_path).to_crs(epsg=3857).rename(columns={id_column: FEATURE_ID_COLUMN})
+    gdf = gpd.read_file(geometry_path_str).to_crs(epsg=3857).rename(columns={id_column: FEATURE_ID_COLUMN})
 
     # Add WGS84 centroid
     centroids = gdf.to_crs(epsg=4326).centroid
@@ -208,6 +236,6 @@ def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path:
         raise ValueError("Duplicate ID found")
 
     # Write out to GeoPackage
-    output_path = Path(output_path)
+    output_path = Path(output_path_str)
     output_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
     gdf.to_file(output_path, driver="GPKG")

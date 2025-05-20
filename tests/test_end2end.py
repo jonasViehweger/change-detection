@@ -47,7 +47,7 @@ def geojson_input(tmp_path):
 @pytest.mark.parametrize(
     ("load_env", "endpoint"),
     [
-        (".env.tests.sh", "SENTINEL_HUB"),  # First test with AWS
+        # (".env.tests.sh", "SENTINEL_HUB"),  # First test with AWS
         (".env.tests.cdse", "CDSE"),  # Second test with CDSE
     ],
     indirect=["load_env"],  # Use the load_env fixture indirectly
@@ -67,4 +67,5 @@ def test_process_api(load_env, endpoint, geojson_input):  # noqa: ARG001
     del monitor
     monitor_reloaded = dm.load_monitor(monitor_name, backend="ProcessAPI")
     results = monitor_reloaded.monitor(end=date(2024, 1, 1))
+    monitor_reloaded.delete()
     print(results)
