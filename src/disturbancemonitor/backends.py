@@ -8,7 +8,9 @@ from importlib.resources.abc import Traversable
 from io import BytesIO
 from pathlib import Path
 
+import rasterio
 from rasterio.io import MemoryFile
+import numpy as np
 
 from .cog import write_metric, write_models, write_monitor
 from .constants import DATA_PATH, FEATURE_ID_COLUMN, Endpoints
@@ -159,6 +161,10 @@ class ProcessAPI(Backend):
                 metrics = self.compute_metric(geometry)
                 print("6/6 Writing metric to bucket")
                 with MemoryFile(metrics) as memfile:
+                    with rasterio.open(memfile) as src:
+                        array = src.read()
+                        monitored_pixels = np.count_nonzero(~np.isnan(array))
+                        geo_config.update_monitored_pixels(self.monitor_id, feature_id, monitored_pixels)
                     write_metric(memfile, self.s3, feature_id)
             print("5/6 Creating configuration")
             manager.add_resource(self.sh_configuration)

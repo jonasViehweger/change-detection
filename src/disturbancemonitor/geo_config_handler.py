@@ -35,11 +35,16 @@ class GeoConfigHandler:
             empty_gdf = gpd.GeoDataFrame([], geometry=[], crs="EPSG:3857")
             empty_gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="_init")
 
-            # Create areas_of_interest layer
+            # Create areas_of_interest layer with monitored_pixels column
             aoi_gdf = gpd.GeoDataFrame(
-                [], columns=["monitor_name", FEATURE_ID_COLUMN, "lat", "lng"], geometry=[], crs="EPSG:3857"
+                [], columns=["monitor_name", FEATURE_ID_COLUMN, "lat", "lng", "monitored_pixels"], geometry=[], crs="EPSG:3857"
             )
+            # Initialize monitored_pixels as float to ensure REAL type
+            aoi_gdf["monitored_pixels"] = aoi_gdf["monitored_pixels"].astype('float64')
             aoi_gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+
+        # Check if monitored_pixels column exists, if not add it
+        self._ensure_monitored_pixels_column()
 
         # Connect to the GeoPackage's SQLite database for non-spatial tables
         conn = self._get_connection()
@@ -108,6 +113,56 @@ class GeoConfigHandler:
         conn.commit()
         conn.close()
 
+    def _ensure_monitored_pixels_column(self) -> None:
+        """Ensure the monitored_pixels column exists in the areas_of_interest table as REAL type."""
+        try:
+            # First, check if we can load the areas_of_interest layer
+            try:
+                aoi = gpd.read_file(GEOPACKAGE_PATH, layer="areas_of_interest")
+            except Exception:
+                # If the layer doesn't exist or can't be read, skip this check
+                logger.warning("Could not read areas_of_interest layer to check monitored_pixels column")
+                return
+            
+            # Check if monitored_pixels column exists
+            if "monitored_pixels" not in aoi.columns:
+                # Use SQLite to add the column with explicit REAL type
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                try:
+                    cursor.execute("ALTER TABLE areas_of_interest ADD COLUMN monitored_pixels REAL")
+                    conn.commit()
+                    logger.info("Added monitored_pixels column (REAL type) to areas_of_interest table")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column name" in str(e).lower():
+                        logger.info("monitored_pixels column already exists")
+                    else:
+                        raise e
+                finally:
+                    conn.close()
+            else:
+                # Column exists, verify it's REAL type
+                conn = self._get_connection()
+                cursor = conn.cursor()
+                
+                try:
+                    cursor.execute("PRAGMA table_info(areas_of_interest)")
+                    columns_info = cursor.fetchall()
+                    
+                    for col_info in columns_info:
+                        if col_info['name'] == 'monitored_pixels':
+                            if col_info['type'].upper() != 'REAL':
+                                logger.warning(f"monitored_pixels column type is {col_info['type']}, expected REAL")
+                            else:
+                                logger.debug("monitored_pixels column is correctly typed as REAL")
+                            break
+                finally:
+                    conn.close()
+                    
+        except Exception as e:
+            logger.warning(f"Could not check/add monitored_pixels column: {e}")
+
     def _get_connection(self) -> sqlite3.Connection:
         """Get a connection to the SQLite database underlying the GeoPackage."""
         conn = sqlite3.connect(str(GEOPACKAGE_PATH))
@@ -147,6 +202,12 @@ class GeoConfigHandler:
         # Add monitor_name column
         gdf["monitor_name"] = monitor_name
 
+        # Ensure monitored_pixels column exists and is properly typed
+        if "monitored_pixels" not in gdf.columns:
+            gdf["monitored_pixels"] = None
+        # Ensure the column is float64 to map to REAL in SQLite
+        gdf["monitored_pixels"] = gdf["monitored_pixels"].astype('float64')
+
         # Explode any MultiPolygons into separate Polygons
         if any(gdf.geometry.type.isin(["MultiPolygon"])):
             gdf = gdf.explode(index_parts=False)
@@ -161,6 +222,10 @@ class GeoConfigHandler:
             if not existing_aoi.empty and monitor_name in existing_aoi["monitor_name"].values:
                 existing_aoi = existing_aoi[existing_aoi["monitor_name"] != monitor_name]
 
+            # Ensure existing_aoi has the same column types
+            if not existing_aoi.empty and "monitored_pixels" in existing_aoi.columns:
+                existing_aoi["monitored_pixels"] = existing_aoi["monitored_pixels"].astype('float64')
+
             # Concatenate with new geometries
             combined_aoi = pd.concat([existing_aoi, gdf], ignore_index=True)
 
@@ -170,6 +235,43 @@ class GeoConfigHandler:
             logger.error("Error updating areas_of_interest")
             # If there was an error, try to save just the new geometries
             gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+
+    def update_monitored_pixels(self, monitor_name: str, feature_id: str, monitored_pixels: int) -> None:
+        """
+        Update the monitored_pixels count for a specific feature in the areas_of_interest table.
+
+        Args:
+            monitor_name: Name of the monitor
+            feature_id: Feature ID to update
+            monitored_pixels: Number of monitored pixels
+        """
+        try:
+            # Load the areas_of_interest layer
+            aoi = gpd.read_file(GEOPACKAGE_PATH, layer="areas_of_interest")
+            
+            if aoi.empty:
+                logger.warning(f"No areas_of_interest found to update monitored_pixels for {monitor_name}/{feature_id}")
+                return
+
+            # Find the specific row to update
+            mask = (aoi["monitor_name"] == monitor_name) & (aoi[FEATURE_ID_COLUMN] == str(feature_id))
+            
+            if not mask.any():
+                logger.warning(f"No matching geometry found for monitor '{monitor_name}' and feature '{feature_id}'")
+                return
+
+            # Ensure the column is properly typed before updating
+            aoi["monitored_pixels"] = aoi["monitored_pixels"].astype('float64')
+            
+            # Update the monitored_pixels value
+            aoi.loc[mask, "monitored_pixels"] = float(monitored_pixels)
+
+            # Save back to GeoPackage
+            aoi.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+            logger.info(f"Updated monitored_pixels for {monitor_name}/{feature_id}: {monitored_pixels}")
+
+        except Exception as e:
+            logger.error(f"Error updating monitored_pixels for {monitor_name}/{feature_id}: {e}")
 
     def load_geometry(self, monitor_name: str | None = None) -> gpd.GeoDataFrame:
         """
@@ -556,6 +658,9 @@ class GeoConfigHandler:
         centroids = gdf.to_crs(epsg=4326).centroid
         gdf["lat"] = centroids.y
         gdf["lng"] = centroids.x
+
+        # Initialize monitored_pixels column as float64 to ensure REAL type in SQLite
+        gdf["monitored_pixels"] = pd.Series(dtype='float64')
 
         # Explode any MultiPolygons into separate Polygons
         if any(gdf.geometry.type.isin(["MultiPolygon"])):

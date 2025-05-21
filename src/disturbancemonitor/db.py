@@ -116,6 +116,18 @@ def update_monitor_state(name: str, state: str) -> None:
     geo_config.update_monitor_state(name, state)
 
 
+def update_monitored_pixels(monitor_name: str, feature_id: str, monitored_pixels: int) -> None:
+    """
+    Update the monitored_pixels count for a specific feature in the areas_of_interest table.
+
+    Args:
+        monitor_name: Name of the monitor
+        feature_id: Feature ID to update
+        monitored_pixels: Number of monitored pixels
+    """
+    geo_config.update_monitored_pixels(monitor_name, feature_id, monitored_pixels)
+
+
 def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path: str | PathLike) -> None:
     """
     Load a geometry file, reproject it to EPSG:3857, set the column name to the id_column,
