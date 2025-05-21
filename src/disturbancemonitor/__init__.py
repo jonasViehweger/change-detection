@@ -1,18 +1,16 @@
 import datetime
 from dataclasses import fields
 from os import PathLike
-from pathlib import Path
 from typing import Any, Literal
 
-import geopandas as gpd
-
 from .backends import AsyncAPI, Backend, ProcessAPI
-from .constants import CONFIG_PATH, FEATURE_ID_COLUMN, EndpointTypes
+from .constants import FEATURE_ID_COLUMN, EndpointTypes
 from .db import (
     backend_exists,
     init_db,
     load_backend_config,
     load_monitor_params,
+    prepare_geometry,
     save_monitor_params,
 )
 from .monitor_params import MonitorParameters
@@ -45,13 +43,14 @@ def initialize_monitor(
     Returns:
         Backend: Initialized backend instance.
     """
-    # Convert path-like objects to strings
-    input_path_str = str(input_path) if isinstance(input_path, PathLike) else input_path
-    geometry_path_str = (
-        str(params.geometry_path) if isinstance(params.geometry_path, PathLike) else params.geometry_path
-    )
+    # Process the input geometry and store it in the GeoPackage
+    # The geometry is stored in a layer named after the monitor
+    prepare_geometry(input_path, id_column, params.name)
 
-    prepare_geometry(input_path_str, id_column, geometry_path_str)
+    # Set the geometry_path to point to the monitor name (layer in GeoPackage)
+    params.geometry_path = params.name
+
+    # Initialize the backend
     backend_instance = BACKENDS[backend](params, **kwargs)
     backend_instance.init_model()
     backend_instance.dump()
@@ -81,8 +80,8 @@ def start_monitor(
     Initialize disturbance monitoring
 
     This function is used to first initialize a disturbance monitor.
-    The parameters used to initialize the monitor are saved in the SQLite database
-    at ~/.configs/disturbancemonitor/config.db.
+    The parameters used to initialize the monitor are saved in the GeoPackage
+    at ~/.configs/disturbancemonitor/monitor_config.gpkg.
 
     During initializing, models will be fit for each pixel in the area of interest.
     This is the most processing intensive step of the monitoring. When loading
@@ -90,7 +89,7 @@ def start_monitor(
     again. Instead only the model weights are loaded.
 
     Args:
-        name (str): Name of the monitor. Must be a unique name in the database.
+        name (str): Name of the monitor. Must be a unique name in the GeoPackage.
             Use `.load_monitor()` to load an already existing monitor.
         monitoring_start (datetime.date): Start of the monitoring. The model will
             be fit on the year before `monitoring_start`.
@@ -120,12 +119,11 @@ def start_monitor(
     last_monitored = kwargs.pop("last_monitored", monitoring_start)
     filtered_monitor_kwargs = {k: v for k, v in kwargs.items() if k in monitor_param_fields}
     backend_kwargs = {k: v for k, v in kwargs.items() if k not in monitor_param_fields}
-    geometry_out_path = CONFIG_PATH / "geoms" / f"{name}.gpkg"
 
     params = MonitorParameters(
         name=name,
         monitoring_start=monitoring_start,
-        geometry_path=geometry_out_path,
+        geometry_path=name,  # Store just the name which will be used as the layer name in the GeoPackage
         resolution=resolution,
         datasource=datasource,
         datasource_id=datasource_id,
@@ -164,13 +162,13 @@ def start_monitor(
 
 def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:
     """
-    Load Monitor from database
+    Load Monitor from GeoPackage
 
-    This loads a monitor object from the config database at
-    ~/.disturbancemonitor/config.db.
+    This loads a monitor object from the GeoPackage at
+    ~/.disturbancemonitor/monitor_config.gpkg.
 
     Args:
-        name (str): Name of the monitor, as saved in the database
+        name (str): Name of the monitor, as saved in the GeoPackage
         backend (backend): Which backend to use for the monitor.
     """
     init_db()
@@ -186,43 +184,3 @@ def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:
         **monitor_config,
         **backend_config,
     )
-
-
-def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path: str | PathLike) -> None:
-    """
-    Load a geometry file, reproject it to EPSG:3857, set the column name to the id_column,
-    check if all values in the id column are unique, and write it to a GeoPackage.
-
-    Parameters:
-    - geometry_path (str | PathLike): Path to the input geometry file.
-    - id_column (str): The name of the column to be used as the ID column.
-    - output_path (str | PathLike): Path to the output GeoPackage file.
-
-    Returns:
-    - None
-    """
-    # Convert path-like objects to strings
-    geometry_path_str = str(geometry_path) if isinstance(geometry_path, PathLike) else geometry_path
-    output_path_str = str(output_path) if isinstance(output_path, PathLike) else output_path
-
-    # Load the input geometry with GeoPandas
-    gdf = gpd.read_file(geometry_path_str).to_crs(epsg=3857).rename(columns={id_column: FEATURE_ID_COLUMN})
-
-    # Add WGS84 centroid
-    centroids = gdf.to_crs(epsg=4326).centroid
-    gdf["lat"] = centroids.y
-    gdf["lng"] = centroids.x
-
-    # Check for any geometries which aren't POLYGONS
-    if not all(gdf.geometry.type == "Polygon"):
-        raise ValueError("All geometries must be of type POLYGON")
-
-    # Check for uniqueness in the id_column
-    is_unique = gdf[FEATURE_ID_COLUMN].is_unique
-    if not is_unique:
-        raise ValueError("Duplicate ID found")
-
-    # Write out to GeoPackage
-    output_path = Path(output_path_str)
-    output_path.parent.mkdir(parents=True, exist_ok=True)  # Ensure output directory exists
-    gdf.to_file(output_path, driver="GPKG")

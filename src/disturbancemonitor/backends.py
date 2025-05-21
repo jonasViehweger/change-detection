@@ -8,7 +8,6 @@ from importlib.resources.abc import Traversable
 from io import BytesIO
 from pathlib import Path
 
-import geopandas as gpd
 from rasterio.io import MemoryFile
 
 from .cog import write_metric, write_models, write_monitor
@@ -18,6 +17,7 @@ from .db import (
     save_monitor_params,
     update_monitor_state,
 )
+from .geo_config_handler import geo_config
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
 
@@ -101,7 +101,9 @@ class ProcessAPI(Backend):
         self.s3 = S3(self.bucket_name, self.folder_name, self.s3_profile)
         self.sh_configuration = SHConfiguration(self.urls.base_url, self.client, monitor_params.name, self.instance_id)
         self.rollback = rollback
-        self.geometries = gpd.read_file(monitor_params.geometry_path)
+
+        # Load geometries from GeoPackage instead of direct file
+        self.geometries = geo_config.load_geometry(monitor_params.geometry_path)
 
         super().__init__(monitor_params)
 
