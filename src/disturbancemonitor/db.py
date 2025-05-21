@@ -22,7 +22,7 @@ def save_monitor_params(params: MonitorParameters) -> None:
     # Convert to dict and ensure all values are compatible
     params_dict = asdict(params)
 
-    # Remove geometry_path from params_dict as it's now stored in the GeoPackage layer
+    # Remove geometry_path from params_dict as it's now stored in the areas_of_interest table
     params_dict.pop("geometry_path", None)
 
     # Save the monitor parameters
@@ -63,8 +63,8 @@ def load_monitor_params(name: str) -> dict[str, Any]:
     """Load monitor parameters from the database."""
     params = geo_config.load_monitor_params(name)
 
-    # Add the geometry path to the params
-    # This path is now virtual, pointing to the layer in the GeoPackage
+    # Add the geometry_path to the params, pointing to the monitor name
+    # This ensures backward compatibility
     params["geometry_path"] = name
 
     return params
@@ -119,7 +119,7 @@ def update_monitor_state(name: str, state: str) -> None:
 def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path: str | PathLike) -> None:
     """
     Load a geometry file, reproject it to EPSG:3857, set the column name to the id_column,
-    check if all values in the id column are unique, and store it in the GeoPackage.
+    check if all values in the id column are unique, and store it in the areas_of_interest table.
 
     Parameters:
     - geometry_path (str | PathLike): Path to the input geometry file.
@@ -130,7 +130,7 @@ def prepare_geometry(geometry_path: str | PathLike, id_column: str, output_path:
     output_path_str = str(output_path) if isinstance(output_path, PathLike) else output_path
     monitor_name = Path(output_path_str).stem  # Get filename without extension
 
-    # Use GeoConfigHandler to prepare and store the geometry
+    # Use GeoConfigHandler to prepare and store the geometry in areas_of_interest
     geo_config.prepare_geometry(geometry_path, id_column, monitor_name)
 
 
