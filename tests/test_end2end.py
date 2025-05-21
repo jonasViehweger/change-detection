@@ -58,7 +58,7 @@ def test_process_api(load_env, endpoint, geojson_input):  # noqa: ARG001
         name=monitor_name,
         monitoring_start=date(2023, 1, 1),
         geometry_path=geojson_input,
-        id_column="id",
+        id_column="MONITOR_FEATURE_ID",
         backend="ProcessAPI",
         overwrite=True,
         resolution=100,

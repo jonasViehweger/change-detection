@@ -5,8 +5,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-import toml
-
 from .constants import CONFIG_PATH
 from .monitor_params import MonitorParameters
 
@@ -102,76 +100,23 @@ def init_db() -> None:
     )
     """)
 
+    # Create monitoring_results table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS monitoring_results (
+        monitor_name TEXT NOT NULL,
+        feature_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        value INTEGER NOT NULL,
+        PRIMARY KEY (monitor_name, feature_id, date),
+        FOREIGN KEY (monitor_name) REFERENCES monitors(name) ON DELETE CASCADE
+    )
+    """)
+
     # Insert schema version
     cursor.execute("INSERT OR REPLACE INTO metadata VALUES (?, ?)", ("schema_version", "1"))
 
     conn.commit()
     conn.close()
-
-
-def migrate_toml_to_sqlite() -> None:
-    """Migrate existing TOML configurations to SQLite."""
-    toml_path = CONFIG_PATH / "config.toml"
-
-    if not toml_path.exists():
-        logger.info("No TOML config found, skipping migration")
-        return
-
-    try:
-        with open(toml_path) as configfile:
-            config = toml.load(configfile)
-
-        if not config:
-            logger.info("Empty TOML config, skipping migration")
-            return
-
-        # Initialize the database
-        init_db()
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        # Process each monitor configuration
-        monitor_configs = {}
-        backend_configs = {}
-
-        for key, value in config.items():
-            if "." in key:  # Backend configuration
-                monitor_name, backend_type = key.split(".")
-                backend_configs[(monitor_name, backend_type)] = value
-            else:  # Monitor configuration
-                monitor_configs[key] = value
-
-        # Insert monitor configurations
-        for name, monitor_config in monitor_configs.items():
-            fields = list(monitor_config.keys())
-            placeholders = ", ".join(["?"] * (len(fields) + 1))  # +1 for name
-
-            cursor.execute(
-                f"INSERT OR REPLACE INTO monitors (name, {', '.join(fields)}) VALUES ({placeholders})",
-                [name] + [monitor_config[field] for field in fields],
-            )
-
-        # Insert backend configurations
-        for (monitor_name, backend_type), backend_config in backend_configs.items():
-            fields = list(backend_config.keys())
-            placeholders = ", ".join(["?"] * (len(fields) + 2))  # +2 for name and backend_type
-
-            cursor.execute(
-                f"INSERT OR REPLACE INTO backends (name, backend_type, {', '.join(fields)}) VALUES ({placeholders})",
-                [monitor_name, backend_type] + [backend_config[field] for field in fields],
-            )
-
-        conn.commit()
-        conn.close()
-
-        # Backup the old TOML file
-        backup_path = toml_path.with_suffix(".toml.bak")
-        toml_path.rename(backup_path)
-        logger.info("TOML config migrated to SQLite and backed up")
-
-    except Exception:
-        logger.error("Failed to migrate TOML to SQLite")
-        raise
 
 
 def save_monitor_params(params: MonitorParameters) -> None:
@@ -226,6 +171,94 @@ def save_backend_config(monitor_name: str, backend_type: str, config: dict[str, 
 
     conn.commit()
     conn.close()
+
+
+def save_monitoring_results(monitor_name: str, results: dict[int, dict[str, dict[str, int] | str]]) -> None:
+    """
+    Save monitoring results to the database.
+
+    Args:
+        monitor_name: Name of the monitor
+        results: Dictionary with feature IDs as keys and date-value mappings as values
+    """
+    init_db()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Prepare data for bulk insert
+    data_to_insert = []
+
+    for feature_id, feature_data in results.items():
+        for date_str, value in feature_data["newDisturbed"].items():
+            # Add the record to our insertion list
+            data_to_insert.append(
+                (monitor_name, str(feature_id), datetime.datetime.strptime(date_str, "%y%m%d").date(), value)
+            )
+
+    # Only proceed if there's data to insert
+    if data_to_insert:
+        # Use executemany for better performance
+        cursor.executemany(
+            """
+            INSERT OR IGNORE INTO monitoring_results
+            (monitor_name, feature_id, date, value)
+            VALUES (?, ?, ?, ?)
+            """,
+            data_to_insert,
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def load_monitoring_results(monitor_name: str, feature_id: str | None = None) -> dict[str, dict[str, int]]:
+    """
+    Load monitoring results from the database.
+
+    Args:
+        monitor_name: Name of the monitor
+        feature_id: Optional feature ID to filter results
+
+    Returns:
+        Dictionary with feature IDs as keys and date-value mappings as values
+    """
+    init_db()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if feature_id:
+        cursor.execute(
+            """
+            SELECT feature_id, date, value FROM monitoring_results
+            WHERE monitor_name = ? AND feature_id = ?
+            """,
+            (monitor_name, str(feature_id)),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT feature_id, date, value FROM monitoring_results
+            WHERE monitor_name = ?
+            """,
+            (monitor_name,),
+        )
+
+    results = cursor.fetchall()
+    conn.close()
+
+    # Organize results into the expected structure
+    structured_results = {}
+    for row in results:
+        feature_id = row["feature_id"]
+        date = row["date"]
+        value = row["value"]
+
+        if feature_id not in structured_results:
+            structured_results[feature_id] = {}
+
+        structured_results[feature_id][date] = value
+
+    return structured_results
 
 
 def load_monitor_params(name: str) -> dict[str, Any]:
@@ -324,6 +357,29 @@ def delete_monitor(name: str) -> None:
 
     # Delete monitor (cascade will delete associated backends)
     cursor.execute("DELETE FROM monitors WHERE name = ?", (name,))
+
+    conn.commit()
+    conn.close()
+
+
+def delete_monitoring_results(monitor_name: str, feature_id: str | None = None) -> None:
+    """
+    Delete monitoring results for a specific monitor and optional feature ID.
+
+    Args:
+        monitor_name: Name of the monitor
+        feature_id: Optional feature ID to delete specific results
+    """
+    init_db()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if feature_id:
+        cursor.execute(
+            "DELETE FROM monitoring_results WHERE monitor_name = ? AND feature_id = ?", (monitor_name, str(feature_id))
+        )
+    else:
+        cursor.execute("DELETE FROM monitoring_results WHERE monitor_name = ?", (monitor_name,))
 
     conn.commit()
     conn.close()

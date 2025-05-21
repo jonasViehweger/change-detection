@@ -13,7 +13,6 @@ from .db import (
     init_db,
     load_backend_config,
     load_monitor_params,
-    migrate_toml_to_sqlite,
     save_monitor_params,
 )
 from .monitor_params import MonitorParameters
@@ -112,13 +111,7 @@ def start_monitor(
             10000x10000 and doesn't time out as quickly.
         overwrite (bool): If an already existing monitor should be overwritten.
     """
-    # Initialize database and migrate existing TOML configs if needed
     init_db()
-
-    # Check if it's the first time running with SQLite
-    toml_config_path = CONFIG_PATH / "config.toml"
-    if toml_config_path.exists():
-        migrate_toml_to_sqlite()
 
     # Check if monitor exists in database
     monitor_exists, backend_exists_flag, is_initialized = backend_exists(name, backend)
@@ -180,13 +173,7 @@ def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:
         name (str): Name of the monitor, as saved in the database
         backend (backend): Which backend to use for the monitor.
     """
-    # Initialize database and migrate existing TOML configs if needed
     init_db()
-
-    # Check if it's the first time running with SQLite
-    toml_config_path = CONFIG_PATH / "config.toml"
-    if toml_config_path.exists():
-        migrate_toml_to_sqlite()
 
     # Load monitor params and backend config from database
     monitor_config = load_monitor_params(name)
