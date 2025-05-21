@@ -213,6 +213,7 @@ class SHConfiguration(Resource):
         instance_data = {
             "name": f"Disturbance Monitor - {self.monitor_name}",
             "description": "Output of the disturbance monitoring",
+            "additionalData": {"showWarnings": False, "showLogo": False, "imageQuality": 80, "disabled": False},
         }
         instance = self.client.post(self.url + "/wms/instances", json=instance_data)
         try:
