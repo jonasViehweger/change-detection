@@ -164,7 +164,7 @@ class ProcessAPI(Backend):
                     with rasterio.open(memfile) as src:
                         array = src.read()
                         monitored_pixels = np.count_nonzero(~np.isnan(array))
-                        geo_config.update_monitored_pixels(self.monitor_id, feature_id, monitored_pixels)
+                        geo_config.update_monitored_pixels(self.monitor_params.name, feature_id, monitored_pixels)
                     write_metric(memfile, self.s3, feature_id)
             print("5/6 Creating configuration")
             manager.add_resource(self.sh_configuration)
