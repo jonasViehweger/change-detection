@@ -775,7 +775,7 @@ class GeoConfigHandler:
 
         # Initialize monitored_pixels column as float64 to ensure REAL type in SQLite
         gdf["monitored_pixels"] = pd.Series(dtype="float64")
-        gdf["disturbed_pixels"] = pd.Series(dtype="float64")
+        gdf["disturbed_pixels"] = 0
 
         # Check for any geometries which aren't POLYGONS
         if not all(gdf.geometry.type == "Polygon"):
