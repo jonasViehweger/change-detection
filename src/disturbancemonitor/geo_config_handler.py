@@ -796,6 +796,41 @@ class GeoConfigHandler:
             extra={"monitor_name": monitor_name, "final_feature_count": len(gdf)},
         )
 
+    def load_config(self) -> dict[str, Any]:
+        """
+        Load all configuration from the database in a format compatible with the old TOML format.
+        This is for backward compatibility during migration.
+        """
+        # Get all monitors
+        monitors = []
+        for name in self.load_all_monitors():
+            monitor_data = self.load_monitor_params(name)
+            monitor_data["name"] = name
+            monitors.append(monitor_data)
+
+        # Build the config dictionary
+        config = {}
+
+        # Add monitor configurations
+        for monitor in monitors:
+            name = monitor.pop("name")
+            config[name] = monitor
+
+            # Load backends for this monitor
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM backends WHERE name = ?", (name,))
+            backends = cursor.fetchall()
+            conn.close()
+
+            # Add backend configurations
+            for backend in backends:
+                backend_type = backend.pop("backend_type")
+                backend.pop("name")
+                config[f"{name}.{backend_type}"] = backend
+
+        return config
+
 
 # Global instance for easy import
 geo_config = GeoConfigHandler()
