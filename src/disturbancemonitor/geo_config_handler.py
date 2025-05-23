@@ -1,6 +1,7 @@
 import datetime
 import logging
 import sqlite3
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ import geopandas as gpd
 import pandas as pd
 
 from .constants import CONFIG_PATH, FEATURE_ID_COLUMN
+from .monitor_params import MonitorParameters
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -252,16 +254,20 @@ class GeoConfigHandler:
             logger.error("Error loading geometry for monitor")
             raise e
 
-    def save_monitor_params(self, params_dict: dict[str, Any]) -> None:
+    def save_monitor_params(self, params: MonitorParameters) -> None:
         """
         Save monitor parameters to the GeoPackage.
 
         Args:
-            params_dict: Dictionary containing monitor parameters
+            params: Dictionary containing monitor parameters
         """
         conn = self._get_connection()
         cursor = conn.cursor()
+        # Convert to dict and ensure all values are compatible
+        params_dict = asdict(params)
 
+        # Remove geometry_path from params_dict as it's now stored in the areas_of_interest table
+        params_dict.pop("geometry_path", None)
         name = params_dict.pop("name")
 
         # Handle dates
@@ -428,6 +434,10 @@ class GeoConfigHandler:
         for date_field in ["monitoring_start", "last_monitored"]:
             if result.get(date_field):
                 result[date_field] = datetime.date.fromisoformat(result[date_field])
+        
+        # Add the geometry_path to the params, pointing to the monitor name
+        # This ensures backward compatibility
+        result["geometry_path"] = name
 
         return result
 
@@ -630,6 +640,42 @@ class GeoConfigHandler:
 
         # Save to areas_of_interest in GeoPackage
         self.save_geometry(monitor_name, gdf)
+    
+
+    def load_config(self) -> dict[str, Any]:
+        """
+        Load all configuration from the database in a format compatible with the old TOML format.
+        This is for backward compatibility during migration.
+        """
+        # Get all monitors
+        monitors = []
+        for name in self.load_all_monitors():
+            monitor_data = self.load_monitor_params(name)
+            monitor_data["name"] = name
+            monitors.append(monitor_data)
+
+        # Build the config dictionary
+        config = {}
+
+        # Add monitor configurations
+        for monitor in monitors:
+            name = monitor.pop("name")
+            config[name] = monitor
+
+            # Load backends for this monitor
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM backends WHERE name = ?", (name,))
+            backends = cursor.fetchall()
+            conn.close()
+
+            # Add backend configurations
+            for backend in backends:
+                backend_type = backend.pop("backend_type")
+                backend.pop("name")
+                config[f"{name}.{backend_type}"] = backend
+
+        return config
 
 
 # Global instance for easy import
