@@ -27,12 +27,14 @@ class GeoConfigHandler:
     def __init__(self):
         # Ensure the directory exists
         CONFIG_PATH.mkdir(parents=True, exist_ok=True)
+        logger.debug("Initializing GeoConfigHandler", extra={"config_path": str(CONFIG_PATH)})
         self._init_geopackage()
 
     def _init_geopackage(self) -> None:
         """Initialize the GeoPackage with necessary tables if they don't exist."""
         # Create an empty GeoPackage file if it doesn't exist
         if not GEOPACKAGE_PATH.exists():
+            logger.info("Creating new GeoPackage file", extra={"geopackage_path": str(GEOPACKAGE_PATH)})
             # Create an empty GeoDataFrame and save it to establish the GeoPackage
             empty_gdf = gpd.GeoDataFrame([], geometry=[], crs="EPSG:3857")
             empty_gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="_init")
@@ -42,7 +44,8 @@ class GeoConfigHandler:
                 [], columns=["monitor_name", FEATURE_ID_COLUMN, "lat", "lng"], geometry=[], crs="EPSG:3857"
             )
             aoi_gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
-
+        else:
+            logger.debug("GeoPackage file already exists", extra={"geopackage_path": str(GEOPACKAGE_PATH)})
 
         # Connect to the GeoPackage's SQLite database for non-spatial tables
         conn = self._get_connection()
@@ -66,6 +69,7 @@ class GeoConfigHandler:
             state TEXT NOT NULL
         )
         """)
+        logger.debug("Created or verified monitors table")
 
         # Create backends table
         cursor.execute("""
@@ -84,6 +88,7 @@ class GeoConfigHandler:
             FOREIGN KEY (name) REFERENCES monitors(name) ON DELETE CASCADE
         )
         """)
+        logger.debug("Created or verified backends table")
 
         # Create metadata table
         cursor.execute("""
@@ -92,6 +97,7 @@ class GeoConfigHandler:
             value TEXT
         )
         """)
+        logger.debug("Created or verified metadata table")
 
         # Create monitoring_results table
         cursor.execute("""
@@ -104,9 +110,11 @@ class GeoConfigHandler:
             FOREIGN KEY (monitor_name) REFERENCES monitors(name) ON DELETE CASCADE
         )
         """)
+        logger.debug("Created or verified monitoring_results table")
 
         # Insert schema version
         cursor.execute("INSERT OR REPLACE INTO metadata VALUES (?, ?)", ("schema_version", "2"))
+        logger.info("GeoPackage initialization completed with schema version 2")
 
         conn.commit()
         conn.close()
@@ -115,6 +123,9 @@ class GeoConfigHandler:
         """Get a connection to the SQLite database underlying the GeoPackage."""
         conn = sqlite3.connect(str(GEOPACKAGE_PATH))
         conn.row_factory = self._dict_factory
+        conn.enable_load_extension(True)
+        conn.load_extension("mod_spatialite")
+        logger.debug("Established database connection", extra={"geopackage_path": str(GEOPACKAGE_PATH)})
         return conn
 
     @staticmethod
@@ -143,8 +154,13 @@ class GeoConfigHandler:
             monitor_name: Name of the monitor to associate with the geometries
             gdf: GeoDataFrame containing the geometries
         """
+        logger.info("Saving geometry for monitor", extra={"monitor_name": monitor_name, "geometry_count": len(gdf)})
+
         # Ensure the GeoDataFrame has the correct CRS
         if gdf.crs is None or gdf.crs.to_epsg() != 3857:
+            logger.debug(
+                "Reprojecting geometry to EPSG:3857", extra={"monitor_name": monitor_name, "original_crs": str(gdf.crs)}
+            )
             gdf = gdf.to_crs(epsg=3857)
 
         # Add monitor_name column
@@ -154,10 +170,11 @@ class GeoConfigHandler:
         if "monitored_pixels" not in gdf.columns:
             gdf["monitored_pixels"] = None
         # Ensure the column is float64 to map to REAL in SQLite
-        gdf["monitored_pixels"] = gdf["monitored_pixels"].astype('float64')
+        gdf["monitored_pixels"] = gdf["monitored_pixels"].astype("float64")
 
         # Explode any MultiPolygons into separate Polygons
         if any(gdf.geometry.type.isin(["MultiPolygon"])):
+            logger.debug("Exploding MultiPolygons to Polygons", extra={"monitor_name": monitor_name})
             gdf = gdf.explode(index_parts=False)
             # Filter to keep only Polygon geometries
             gdf = gdf[gdf.geometry.type == "Polygon"]
@@ -168,21 +185,27 @@ class GeoConfigHandler:
 
             # Delete any existing geometries for this monitor
             if not existing_aoi.empty and monitor_name in existing_aoi["monitor_name"].values:
+                logger.debug("Removing existing geometries for monitor", extra={"monitor_name": monitor_name})
                 existing_aoi = existing_aoi[existing_aoi["monitor_name"] != monitor_name]
 
             # Ensure existing_aoi has the same column types
             if not existing_aoi.empty and "monitored_pixels" in existing_aoi.columns:
-                existing_aoi["monitored_pixels"] = existing_aoi["monitored_pixels"].astype('float64')
+                existing_aoi["monitored_pixels"] = existing_aoi["monitored_pixels"].astype("float64")
 
             # Concatenate with new geometries
             combined_aoi = pd.concat([existing_aoi, gdf], ignore_index=True)
 
             # Save back to GeoPackage
             combined_aoi.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
-        except Exception:
-            logger.error("Error updating areas_of_interest")
+            logger.info(
+                "Successfully saved geometry to areas_of_interest",
+                extra={"monitor_name": monitor_name, "total_features": len(combined_aoi)},
+            )
+        except Exception as e:
+            logger.error("Error updating areas_of_interest", extra={"monitor_name": monitor_name, "error": str(e)})
             # If there was an error, try to save just the new geometries
             gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+            logger.warning("Saved only new geometries after error", extra={"monitor_name": monitor_name})
 
     def update_monitored_pixels(self, monitor_name: str, feature_id: str, monitored_pixels: int) -> None:
         """
@@ -193,16 +216,20 @@ class GeoConfigHandler:
             feature_id: Feature ID to update
             monitored_pixels: Number of monitored pixels
         """
+        logger.debug(
+            "Updating monitored pixels",
+            extra={"monitor_name": monitor_name, "feature_id": feature_id, "monitored_pixels": monitored_pixels},
+        )
+
         try:
             conn = self._get_connection()
-            conn.enable_load_extension(True)
-            conn.load_extension("mod_spatialite")
             cursor = conn.cursor()
 
             # Ensure the column exists before trying to update
             cursor.execute("PRAGMA table_info(areas_of_interest)")
-            columns = [row['name'] for row in cursor.fetchall()]
+            columns = [row["name"] for row in cursor.fetchall()]
             if "monitored_pixels" not in columns:
+                logger.debug("Adding monitored_pixels column to areas_of_interest table")
                 cursor.execute("ALTER TABLE areas_of_interest ADD COLUMN monitored_pixels REAL")
 
             # Run update
@@ -212,17 +239,29 @@ class GeoConfigHandler:
                 SET monitored_pixels = ?
                 WHERE monitor_name = ? AND {FEATURE_ID_COLUMN} = ?
                 """,
-                (float(monitored_pixels), monitor_name, str(feature_id))
+                (float(monitored_pixels), monitor_name, str(feature_id)),
             )
 
             if cursor.rowcount == 0:
-                logger.warning(f"No matching row found for monitor_name={monitor_name} and feature_id={feature_id}")
+                logger.warning(
+                    "No matching row found for update", extra={"monitor_name": monitor_name, "feature_id": feature_id}
+                )
             else:
-                logger.info(f"Updated monitored_pixels for monitor_name={monitor_name}, feature_id={feature_id} to {monitored_pixels}")
+                logger.info(
+                    "Updated monitored_pixels successfully",
+                    extra={
+                        "monitor_name": monitor_name,
+                        "feature_id": feature_id,
+                        "monitored_pixels": monitored_pixels,
+                    },
+                )
 
             conn.commit()
         except Exception as e:
-            logger.error(f"SQL error updating monitored_pixels for {monitor_name}/{feature_id}: {e}")
+            logger.error(
+                "SQL error updating monitored_pixels",
+                extra={"monitor_name": monitor_name, "feature_id": feature_id, "error": str(e)},
+            )
         finally:
             conn.close()
 
@@ -236,22 +275,31 @@ class GeoConfigHandler:
         Returns:
             GeoDataFrame containing the geometries
         """
+        logger.debug("Loading geometry", extra={"monitor_name": monitor_name})
+
         try:
             # Load the areas_of_interest layer and filter for the monitor name
             aoi = gpd.read_file(GEOPACKAGE_PATH, layer="areas_of_interest")
             if aoi.empty:
+                logger.warning("No geometries found in areas_of_interest table")
                 raise KeyError(f"No geometries found for monitor '{monitor_name}'")
             if monitor_name is None:
+                logger.debug("Returning all geometries", extra={"total_count": len(aoi)})
                 return aoi
 
             filtered_aoi = aoi[aoi["monitor_name"] == monitor_name]
 
             if filtered_aoi.empty:
+                logger.warning("No geometries found for monitor", extra={"monitor_name": monitor_name})
                 raise KeyError(f"No geometries found for monitor '{monitor_name}'")
 
+            logger.debug(
+                "Successfully loaded geometry",
+                extra={"monitor_name": monitor_name, "geometry_count": len(filtered_aoi)},
+            )
             return filtered_aoi
         except Exception as e:
-            logger.error("Error loading geometry for monitor")
+            logger.error("Error loading geometry for monitor", extra={"monitor_name": monitor_name, "error": str(e)})
             raise e
 
     def save_monitor_params(self, params: MonitorParameters) -> None:
@@ -261,6 +309,8 @@ class GeoConfigHandler:
         Args:
             params: Dictionary containing monitor parameters
         """
+        logger.info("Saving monitor parameters", extra={"monitor_name": params.name})
+
         conn = self._get_connection()
         cursor = conn.cursor()
         # Convert to dict and ensure all values are compatible
@@ -288,6 +338,7 @@ class GeoConfigHandler:
             [name] + [params_dict[field] for field in fields] + [params_dict[field] for field in fields],
         )
 
+        logger.debug("Monitor parameters saved successfully", extra={"monitor_name": name, "fields": fields})
         conn.commit()
         conn.close()
 
@@ -300,6 +351,8 @@ class GeoConfigHandler:
             backend_type: Type of the backend
             config: Dictionary containing backend configuration
         """
+        logger.info("Saving backend configuration", extra={"monitor_name": monitor_name, "backend_type": backend_type})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -316,6 +369,10 @@ class GeoConfigHandler:
             [monitor_name, backend_type] + [config[field] for field in fields] + [config[field] for field in fields],
         )
 
+        logger.debug(
+            "Backend configuration saved successfully",
+            extra={"monitor_name": monitor_name, "backend_type": backend_type, "config_fields": fields},
+        )
         conn.commit()
         conn.close()
 
@@ -327,6 +384,8 @@ class GeoConfigHandler:
             monitor_name: Name of the monitor
             results: Dictionary with feature IDs as keys and date-value mappings as values
         """
+        logger.info("Saving monitoring results", extra={"monitor_name": monitor_name, "feature_count": len(results)})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -356,6 +415,12 @@ class GeoConfigHandler:
                 """,
                 data_to_insert,
             )
+            logger.debug(
+                "Monitoring results saved successfully",
+                extra={"monitor_name": monitor_name, "records_inserted": len(data_to_insert)},
+            )
+        else:
+            logger.debug("No monitoring results to save", extra={"monitor_name": monitor_name})
 
         conn.commit()
         conn.close()
@@ -371,6 +436,8 @@ class GeoConfigHandler:
         Returns:
             Dictionary with feature IDs as keys and date-value mappings as values
         """
+        logger.debug("Loading monitoring results", extra={"monitor_name": monitor_name, "feature_id": feature_id})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -408,6 +475,14 @@ class GeoConfigHandler:
             date = datetime.date.fromisoformat(date_str) if date_str else None
             structured_results[feature_id][date] = value
 
+        logger.debug(
+            "Monitoring results loaded successfully",
+            extra={
+                "monitor_name": monitor_name,
+                "feature_count": len(structured_results),
+                "total_records": len(results),
+            },
+        )
         return structured_results
 
     def load_monitor_params(self, name: str) -> dict[str, Any]:
@@ -420,6 +495,8 @@ class GeoConfigHandler:
         Returns:
             Dictionary containing monitor parameters
         """
+        logger.debug("Loading monitor parameters", extra={"monitor_name": name})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -428,17 +505,19 @@ class GeoConfigHandler:
         conn.close()
 
         if not result:
+            logger.error("Monitor not found in database", extra={"monitor_name": name})
             raise KeyError(f"Monitor with name '{name}' not found in the database")
 
         # Convert date strings to datetime.date objects
         for date_field in ["monitoring_start", "last_monitored"]:
             if result.get(date_field):
                 result[date_field] = datetime.date.fromisoformat(result[date_field])
-        
+
         # Add the geometry_path to the params, pointing to the monitor name
         # This ensures backward compatibility
         result["geometry_path"] = name
 
+        logger.debug("Monitor parameters loaded successfully", extra={"monitor_name": name})
         return result
 
     def load_backend_config(self, name: str, backend_type: str) -> dict[str, Any]:
@@ -452,6 +531,8 @@ class GeoConfigHandler:
         Returns:
             Dictionary containing backend configuration
         """
+        logger.debug("Loading backend configuration", extra={"monitor_name": name, "backend_type": backend_type})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -460,12 +541,16 @@ class GeoConfigHandler:
         conn.close()
 
         if not result:
-            raise KeyError(f"Backend configuration for monitor '{name}' with type '{backend_type}' not found")
+            logger.error("Backend configuration not found", extra={"monitor_name": name, "backend_type": backend_type})
+            raise KeyError(f"Backend configuration for monitor '{name}' with type {backend_type} not found")
 
         # Remove name and backend_type from the result
         result.pop("name", None)
         result.pop("backend_type", None)
 
+        logger.debug(
+            "Backend configuration loaded successfully", extra={"monitor_name": name, "backend_type": backend_type}
+        )
         return result
 
     def load_all_monitors(self) -> list[str]:
@@ -475,6 +560,8 @@ class GeoConfigHandler:
         Returns:
             List of monitor names
         """
+        logger.debug("Loading all monitor names")
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -482,7 +569,9 @@ class GeoConfigHandler:
         results = cursor.fetchall()
         conn.close()
 
-        return [row["name"] for row in results]
+        monitor_names = [row["name"] for row in results]
+        logger.debug("All monitor names loaded", extra={"monitor_count": len(monitor_names)})
+        return monitor_names
 
     def monitor_exists(self, name: str) -> bool:
         """
@@ -494,6 +583,8 @@ class GeoConfigHandler:
         Returns:
             True if the monitor exists, False otherwise
         """
+        logger.debug("Checking if monitor exists", extra={"monitor_name": name})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -501,7 +592,9 @@ class GeoConfigHandler:
         result = cursor.fetchone()
         conn.close()
 
-        return result is not None
+        exists = result is not None
+        logger.debug("Monitor existence check completed", extra={"monitor_name": name, "exists": exists})
+        return exists
 
     def backend_exists(self, name: str, backend_type: str) -> tuple[bool, bool, bool]:
         """
@@ -514,6 +607,10 @@ class GeoConfigHandler:
         Returns:
             Tuple of (monitor_exists, backend_exists, is_initialized)
         """
+        logger.debug(
+            "Checking monitor and backend existence", extra={"monitor_name": name, "backend_type": backend_type}
+        )
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -529,6 +626,16 @@ class GeoConfigHandler:
 
         conn.close()
 
+        logger.debug(
+            "Monitor and backend existence check completed",
+            extra={
+                "monitor_name": name,
+                "backend_type": backend_type,
+                "monitor_exists": monitor_exists,
+                "backend_exists": backend_exists,
+                "is_initialized": is_initialized,
+            },
+        )
         return (monitor_exists, backend_exists, is_initialized)
 
     def delete_monitor(self, name: str) -> None:
@@ -538,11 +645,14 @@ class GeoConfigHandler:
         Args:
             name: Name of the monitor
         """
+        logger.info("Deleting monitor", extra={"monitor_name": name})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
         # Delete monitor (cascade will delete associated backends)
         cursor.execute("DELETE FROM monitors WHERE name = ?", (name,))
+        deleted_rows = cursor.rowcount
 
         conn.commit()
         conn.close()
@@ -558,8 +668,17 @@ class GeoConfigHandler:
 
                 # Save back to GeoPackage
                 filtered_aoi.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
-        except Exception:
-            logger.error("Error deleting geometries")
+                logger.info(
+                    "Monitor and associated geometries deleted successfully",
+                    extra={"monitor_name": name, "deleted_monitor_rows": deleted_rows},
+                )
+            else:
+                logger.info(
+                    "Monitor deleted (no associated geometries found)",
+                    extra={"monitor_name": name, "deleted_monitor_rows": deleted_rows},
+                )
+        except Exception as e:
+            logger.error("Error deleting geometries", extra={"monitor_name": name, "error": str(e)})
 
     def delete_monitoring_results(self, monitor_name: str, feature_id: str | None = None) -> None:
         """
@@ -569,6 +688,8 @@ class GeoConfigHandler:
             monitor_name: Name of the monitor
             feature_id: Optional feature ID to delete specific results
         """
+        logger.info("Deleting monitoring results", extra={"monitor_name": monitor_name, "feature_id": feature_id})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -580,8 +701,14 @@ class GeoConfigHandler:
         else:
             cursor.execute("DELETE FROM monitoring_results WHERE monitor_name = ?", (monitor_name,))
 
+        deleted_rows = cursor.rowcount
         conn.commit()
         conn.close()
+
+        logger.info(
+            "Monitoring results deleted successfully",
+            extra={"monitor_name": monitor_name, "feature_id": feature_id, "deleted_rows": deleted_rows},
+        )
 
     def update_monitor_state(self, name: str, state: str) -> None:
         """
@@ -591,13 +718,21 @@ class GeoConfigHandler:
             name: Name of the monitor
             state: New state
         """
+        logger.info("Updating monitor state", extra={"monitor_name": name, "new_state": state})
+
         conn = self._get_connection()
         cursor = conn.cursor()
 
         cursor.execute("UPDATE monitors SET state = ? WHERE name = ?", (state, name))
+        updated_rows = cursor.rowcount
 
         conn.commit()
         conn.close()
+
+        if updated_rows > 0:
+            logger.debug("Monitor state updated successfully", extra={"monitor_name": name, "new_state": state})
+        else:
+            logger.warning("No monitor found to update state", extra={"monitor_name": name, "new_state": state})
 
     def prepare_geometry(self, input_path: str | Path, id_column: str, monitor_name: str) -> None:
         """
@@ -609,11 +744,19 @@ class GeoConfigHandler:
             id_column: Name of the ID column in the input file
             monitor_name: Name of the monitor to associate with the geometries
         """
+        logger.info(
+            "Preparing geometry",
+            extra={"input_path": str(input_path), "id_column": id_column, "monitor_name": monitor_name},
+        )
+
         # Convert path-like objects to strings
         input_path_str = str(input_path) if isinstance(input_path, Path) else input_path
 
         # Load the input geometry with GeoPandas
         gdf = gpd.read_file(input_path_str).to_crs(epsg=3857).rename(columns={id_column: FEATURE_ID_COLUMN})
+        logger.debug(
+            "Loaded and reprojected geometry file", extra={"monitor_name": monitor_name, "feature_count": len(gdf)}
+        )
 
         # Add WGS84 centroid
         centroids = gdf.to_crs(epsg=4326).centroid
@@ -621,61 +764,37 @@ class GeoConfigHandler:
         gdf["lng"] = centroids.x
 
         # Initialize monitored_pixels column as float64 to ensure REAL type in SQLite
-        gdf["monitored_pixels"] = pd.Series(dtype='float64')
+        gdf["monitored_pixels"] = pd.Series(dtype="float64")
 
         # Explode any MultiPolygons into separate Polygons
         if any(gdf.geometry.type.isin(["MultiPolygon"])):
+            logger.debug("Exploding MultiPolygons", extra={"monitor_name": monitor_name})
             gdf = gdf.explode(index_parts=False)
             # Filter to keep only Polygon geometries
             gdf = gdf[gdf.geometry.type == "Polygon"]
 
         # Check for any geometries which aren't POLYGONS
         if not all(gdf.geometry.type == "Polygon"):
+            logger.error(
+                "Invalid geometry types found",
+                extra={"monitor_name": monitor_name, "geometry_types": gdf.geometry.type.unique().tolist()},
+            )
             raise ValueError("All geometries must be of type POLYGON")
 
         # Check for uniqueness in the id_column
         is_unique = gdf[FEATURE_ID_COLUMN].is_unique
         if not is_unique:
+            logger.error(
+                "Duplicate IDs found in geometry", extra={"monitor_name": monitor_name, "id_column": FEATURE_ID_COLUMN}
+            )
             raise ValueError("Duplicate ID found")
 
         # Save to areas_of_interest in GeoPackage
         self.save_geometry(monitor_name, gdf)
-    
-
-    def load_config(self) -> dict[str, Any]:
-        """
-        Load all configuration from the database in a format compatible with the old TOML format.
-        This is for backward compatibility during migration.
-        """
-        # Get all monitors
-        monitors = []
-        for name in self.load_all_monitors():
-            monitor_data = self.load_monitor_params(name)
-            monitor_data["name"] = name
-            monitors.append(monitor_data)
-
-        # Build the config dictionary
-        config = {}
-
-        # Add monitor configurations
-        for monitor in monitors:
-            name = monitor.pop("name")
-            config[name] = monitor
-
-            # Load backends for this monitor
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM backends WHERE name = ?", (name,))
-            backends = cursor.fetchall()
-            conn.close()
-
-            # Add backend configurations
-            for backend in backends:
-                backend_type = backend.pop("backend_type")
-                backend.pop("name")
-                config[f"{name}.{backend_type}"] = backend
-
-        return config
+        logger.info(
+            "Geometry preparation completed successfully",
+            extra={"monitor_name": monitor_name, "final_feature_count": len(gdf)},
+        )
 
 
 # Global instance for easy import

@@ -8,9 +8,9 @@ from importlib.resources.abc import Traversable
 from io import BytesIO
 from pathlib import Path
 
+import numpy as np
 import rasterio
 from rasterio.io import MemoryFile
-import numpy as np
 
 from .cog import write_metric, write_models, write_monitor
 from .constants import DATA_PATH, FEATURE_ID_COLUMN, Endpoints
