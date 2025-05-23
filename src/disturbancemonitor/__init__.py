@@ -5,14 +5,7 @@ from typing import Any, Literal
 
 from .backends import AsyncAPI, Backend, ProcessAPI
 from .constants import FEATURE_ID_COLUMN, EndpointTypes
-from .db import (
-    backend_exists,
-    init_db,
-    load_backend_config,
-    load_monitor_params,
-    prepare_geometry,
-    save_monitor_params,
-)
+from .geo_config_handler import geo_config
 from .monitor_params import MonitorParameters
 
 
@@ -45,7 +38,7 @@ def initialize_monitor(
     """
     # Process the input geometry and store it in the GeoPackage
     # The geometry is stored in a layer named after the monitor
-    prepare_geometry(input_path, id_column, params.name)
+    geo_config.prepare_geometry(input_path, id_column, params.name)
 
     # Set the geometry_path to point to the monitor name (layer in GeoPackage)
     params.geometry_path = params.name
@@ -110,10 +103,8 @@ def start_monitor(
             10000x10000 and doesn't time out as quickly.
         overwrite (bool): If an already existing monitor should be overwritten.
     """
-    init_db()
-
     # Check if monitor exists in database
-    monitor_exists, backend_exists_flag, is_initialized = backend_exists(name, backend)
+    monitor_exists, backend_exists_flag, is_initialized = geo_config.backend_exists(name, backend)
 
     monitor_param_fields = {f.name for f in fields(MonitorParameters)}
     last_monitored = kwargs.pop("last_monitored", monitoring_start)
@@ -138,7 +129,7 @@ def start_monitor(
     )
 
     if load_only:
-        save_monitor_params(params)
+        geo_config.save_monitor_params(params)
         return BACKENDS[backend](params, **backend_kwargs)
 
     if monitor_exists and backend_exists_flag and is_initialized and not overwrite:
@@ -149,7 +140,7 @@ def start_monitor(
 
     if monitor_exists and backend_exists_flag and overwrite:
         # Load existing backend config
-        backend_config = load_backend_config(name, backend)
+        backend_config = geo_config.load_backend_config(name, backend)
 
         # Create backend instance with loaded config
         backend_instance = BACKENDS[backend](params, **backend_kwargs, **backend_config)
@@ -171,11 +162,9 @@ def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:
         name (str): Name of the monitor, as saved in the GeoPackage
         backend (backend): Which backend to use for the monitor.
     """
-    init_db()
-
     # Load monitor params and backend config from database
-    monitor_config = load_monitor_params(name)
-    backend_config = load_backend_config(name, backend)
+    monitor_config = geo_config.load_monitor_params(name)
+    backend_config = geo_config.load_backend_config(name, backend)
 
     return start_monitor(
         backend=backend,

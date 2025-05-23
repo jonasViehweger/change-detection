@@ -391,7 +391,7 @@ class GeoConfigHandler:
 
         # Prepare data for bulk insert
         data_to_insert = []
-
+        sum_disturbed = 0
         for feature_id, feature_data in results.items():
             for date_str, value in feature_data.get("newDisturbed", {}).items():
                 # Add the record to our insertion list
@@ -403,6 +403,7 @@ class GeoConfigHandler:
                         value,
                     )
                 )
+                sum_disturbed += value
 
         # Only proceed if there's data to insert
         if data_to_insert:
@@ -418,6 +419,15 @@ class GeoConfigHandler:
             logger.debug(
                 "Monitoring results saved successfully",
                 extra={"monitor_name": monitor_name, "records_inserted": len(data_to_insert)},
+            )
+            # Run update
+            cursor.execute(
+                f"""
+                UPDATE areas_of_interest
+                SET disturbed_pixels = disturbed_pixels + ?
+                WHERE monitor_name = ? AND {FEATURE_ID_COLUMN} = ?
+                """,
+                (sum_disturbed, monitor_name, str(feature_id)),
             )
         else:
             logger.debug("No monitoring results to save", extra={"monitor_name": monitor_name})
@@ -765,13 +775,7 @@ class GeoConfigHandler:
 
         # Initialize monitored_pixels column as float64 to ensure REAL type in SQLite
         gdf["monitored_pixels"] = pd.Series(dtype="float64")
-
-        # Explode any MultiPolygons into separate Polygons
-        if any(gdf.geometry.type.isin(["MultiPolygon"])):
-            logger.debug("Exploding MultiPolygons", extra={"monitor_name": monitor_name})
-            gdf = gdf.explode(index_parts=False)
-            # Filter to keep only Polygon geometries
-            gdf = gdf[gdf.geometry.type == "Polygon"]
+        gdf["disturbed_pixels"] = pd.Series(dtype="float64")
 
         # Check for any geometries which aren't POLYGONS
         if not all(gdf.geometry.type == "Polygon"):

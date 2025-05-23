@@ -14,11 +14,6 @@ from rasterio.io import MemoryFile
 
 from .cog import write_metric, write_models, write_monitor
 from .constants import DATA_PATH, FEATURE_ID_COLUMN, Endpoints
-from .db import (
-    save_backend_config,
-    save_monitor_params,
-    update_monitor_state,
-)
 from .geo_config_handler import geo_config
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
@@ -48,10 +43,10 @@ class Backend:
         backend_type = type(self).__name__
 
         # Save monitor parameters
-        save_monitor_params(self.monitor_params)
+        geo_config.save_monitor_params(self.monitor_params)
 
         # Save backend configuration
-        save_backend_config(self.monitor_params.name, backend_type, backend_dict)
+        geo_config.save_backend_config(self.monitor_params.name, backend_type, backend_dict)
 
     def delete(self) -> None:
         """
@@ -118,7 +113,7 @@ class ProcessAPI(Backend):
         return copy(subset_dict)
 
     def init_model(self) -> None:
-        update_monitor_state(self.monitor_params.name, "INITIALIZING")
+        geo_config.update_monitor_state(self.monitor_params.name, "INITIALIZING")
         self.monitor_params.state = "INITIALIZING"
         self.dump()
         with ResourceManager(rollback=self.rollback) as manager:
@@ -174,7 +169,7 @@ class ProcessAPI(Backend):
                 evalscript = src.read()
             self.sh_configuration.create_layer("DISTURBED-DATE", evalscript, self.byoc_id)
             self.monitor_params.state = "INITIALIZED"
-            update_monitor_state(self.monitor_params.name, "INITIALIZED")
+            geo_config.update_monitor_state(self.monitor_params.name, "INITIALIZED")
             self.dump()
 
     def compute_models(self, geometry: dict) -> bytes:
@@ -296,9 +291,8 @@ class ProcessAPI(Backend):
         return userdata_dict
 
     def monitor(self, end: datetime.date | None = None) -> dict:
-        update_monitor_state(self.monitor_params.name, "UPDATING")
+        geo_config.update_monitor_state(self.monitor_params.name, "UPDATING")
         self.monitor_params.state = "UPDATING"
-        self.dump()
         if end is None:
             end = datetime.date.today()
         start = self.monitor_params.last_monitored
@@ -340,31 +334,24 @@ class ProcessAPI(Backend):
             user_data["link"] = vis_url
             feature_id = feature["properties"][FEATURE_ID_COLUMN]
             results[feature_id] = user_data
-
-        # Save monitoring results to the database
-        from .db import save_monitoring_results
-
-        save_monitoring_results(self.monitor_params.name, results)
+        geo_config.save_monitoring_results(self.monitor_params.name, results)
 
         self.monitor_params.last_monitored = end
         self.monitor_params.state = "INITIALIZED"
-        update_monitor_state(self.monitor_params.name, "INITIALIZED")
-        self.dump()
+        geo_config.update_monitor_state(self.monitor_params.name, "INITIALIZED")
         return results
 
     def delete(self) -> None:
         """
         Deletes the S3 Folder for the monitor and the SH BYOC collection
         """
-        update_monitor_state(self.monitor_params.name, "DELETING")
+        geo_config.update_monitor_state(self.monitor_params.name, "DELETING")
         self.monitor_params.state = "DELETING"
-        self.dump()
         self.s3.delete()
         self.byoc.delete()
         self.sh_configuration.delete()
         self.monitor_params.state = "DELETED"
-        update_monitor_state(self.monitor_params.name, "DELETED")
-        self.dump()
+        geo_config.update_monitor_state(self.monitor_params.name, "DELETED")
 
 
 class AsyncAPI(Backend):
