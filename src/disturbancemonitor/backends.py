@@ -113,7 +113,6 @@ class ProcessAPI(Backend):
         return copy(subset_dict)
 
     def init_model(self) -> None:
-        geo_config.update_monitor_state(self.monitor_params.name, "INITIALIZING")
         self.monitor_params.state = "INITIALIZING"
         self.dump()
         with ResourceManager(rollback=self.rollback) as manager:
@@ -338,7 +337,7 @@ class ProcessAPI(Backend):
 
         self.monitor_params.last_monitored = end
         self.monitor_params.state = "INITIALIZED"
-        geo_config.update_monitor_state(self.monitor_params.name, "INITIALIZED")
+        self.dump()
         return results
 
     def delete(self) -> None:
