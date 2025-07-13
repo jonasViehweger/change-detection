@@ -14,14 +14,15 @@ from rasterio.io import MemoryFile
 
 from .cog import write_metric, write_models, write_monitor
 from .constants import DATA_PATH, FEATURE_ID_COLUMN, Endpoints
-from .geo_config_handler import geo_config
+from .geo_config_handler import GeoConfigHandler, geo_config
 from .monitor_params import MonitorParameters
 from .resources import BYOC, S3, ResourceManager, SHClient, SHConfiguration
 
 
 class Backend:
-    def __init__(self, monitor_params: MonitorParameters) -> None:
+    def __init__(self, monitor_params: MonitorParameters, config: GeoConfigHandler | None = None) -> None:
         self.monitor_params = monitor_params
+        self.config = config or geo_config
 
     def init_model(self) -> None:
         raise NotImplementedError
@@ -43,10 +44,10 @@ class Backend:
         backend_type = type(self).__name__
 
         # Save monitor parameters
-        geo_config.save_monitor_params(self.monitor_params)
+        self.config.save_monitor_params(self.monitor_params)
 
         # Save backend configuration
-        geo_config.save_backend_config(self.monitor_params.name, backend_type, backend_dict)
+        self.config.save_backend_config(self.monitor_params.name, backend_type, backend_dict)
 
     def delete(self) -> None:
         """
@@ -82,7 +83,9 @@ class ProcessAPI(Backend):
         sh_profile: str = "default-profile",
         monitor_id: str | None = None,
         rollback: bool = True,
+        config: GeoConfigHandler | None = None,
     ) -> None:
+        super().__init__(monitor_params, config)
         self.urls = Endpoints[monitor_params.endpoint].value
         self.url = self.urls.base_url + "/api/v1/process"
 
@@ -100,15 +103,14 @@ class ProcessAPI(Backend):
         self.rollback = rollback
 
         # Load geometries from GeoPackage instead of direct file
-        self.geometries = geo_config.load_geometry(monitor_params.geometry_path)
-
-        super().__init__(monitor_params)
+        self.geometries = self.config.load_geometry(monitor_params.geometry_path)
 
     def as_dict(self) -> dict:
         subset_dict = {
             k: v
             for k, v in self.__dict__.items()
-            if k not in ["client", "url", "urls", "monitor_params", "byoc", "s3", "sh_configuration", "geometries"]
+            if k
+            not in ["client", "url", "urls", "monitor_params", "byoc", "s3", "sh_configuration", "geometries", "config"]
         }
         return copy(subset_dict)
 
@@ -158,7 +160,7 @@ class ProcessAPI(Backend):
                     with rasterio.open(memfile) as src:
                         array = src.read()
                         monitored_pixels = np.count_nonzero(~np.isnan(array))
-                        geo_config.update_monitored_pixels(self.monitor_params.name, feature_id, monitored_pixels)
+                        self.config.update_monitored_pixels(self.monitor_params.name, feature_id, monitored_pixels)
                     write_metric(memfile, self.s3, feature_id)
             print("5/6 Creating configuration")
             manager.add_resource(self.sh_configuration)
@@ -168,7 +170,7 @@ class ProcessAPI(Backend):
                 evalscript = src.read()
             self.sh_configuration.create_layer("DISTURBED-DATE", evalscript, self.byoc_id)
             self.monitor_params.state = "INITIALIZED"
-            geo_config.update_monitor_state(self.monitor_params.name, "INITIALIZED")
+            self.config.update_monitor_state(self.monitor_params.name, "INITIALIZED")
             self.dump()
 
     def compute_models(self, geometry: dict) -> bytes:
@@ -290,7 +292,7 @@ class ProcessAPI(Backend):
         return userdata_dict
 
     def monitor(self, end: datetime.date | None = None) -> dict:
-        geo_config.update_monitor_state(self.monitor_params.name, "UPDATING")
+        self.config.update_monitor_state(self.monitor_params.name, "UPDATING")
         self.monitor_params.state = "UPDATING"
         if end is None:
             end = datetime.date.today()
@@ -333,7 +335,7 @@ class ProcessAPI(Backend):
             user_data["link"] = vis_url
             feature_id = feature["properties"][FEATURE_ID_COLUMN]
             results[feature_id] = user_data
-        geo_config.save_monitoring_results(self.monitor_params.name, results)
+        self.config.save_monitoring_results(self.monitor_params.name, results)
 
         self.monitor_params.last_monitored = end
         self.monitor_params.state = "INITIALIZED"
@@ -344,13 +346,13 @@ class ProcessAPI(Backend):
         """
         Deletes the S3 Folder for the monitor and the SH BYOC collection
         """
-        geo_config.update_monitor_state(self.monitor_params.name, "DELETING")
+        self.config.update_monitor_state(self.monitor_params.name, "DELETING")
         self.monitor_params.state = "DELETING"
         self.s3.delete()
         self.byoc.delete()
         self.sh_configuration.delete()
         self.monitor_params.state = "DELETED"
-        geo_config.update_monitor_state(self.monitor_params.name, "DELETED")
+        self.config.update_monitor_state(self.monitor_params.name, "DELETED")
 
 
 class AsyncAPI(Backend):

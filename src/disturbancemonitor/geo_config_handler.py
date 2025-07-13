@@ -8,14 +8,11 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 
-from .constants import CONFIG_PATH, FEATURE_ID_COLUMN
+from .constants import FEATURE_ID_COLUMN, get_default_config_file_path
 from .monitor_params import MonitorParameters
 
 # Set up logging
 logger = logging.getLogger(__name__)
-
-# Main GeoPackage file path
-GEOPACKAGE_PATH = CONFIG_PATH / "monitor_config.gpkg"
 
 
 class GeoConfigHandler:
@@ -24,28 +21,41 @@ class GeoConfigHandler:
     GeoPackage stores geometries in a spatial table and configuration in non-spatial tables.
     """
 
-    def __init__(self):
-        # Ensure the directory exists
-        CONFIG_PATH.mkdir(parents=True, exist_ok=True)
-        logger.debug("Initializing GeoConfigHandler", extra={"config_path": str(CONFIG_PATH)})
+    def __init__(self, config_file_path: Path | str | None = None):
+        """
+        Initialize GeoConfigHandler with optional custom config file path.
+
+        Args:
+            config_file_path: Optional custom path for the GeoPackage configuration file.
+                            If None, uses the default path from environment variables or constants.
+                            Can be absolute path or relative to current directory.
+        """
+        if config_file_path is None:
+            self.config_file_path = get_default_config_file_path()
+        else:
+            self.config_file_path = Path(config_file_path)
+
+        # Ensure the parent directory exists
+        self.config_file_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.debug("Initializing GeoConfigHandler", extra={"config_file_path": str(self.config_file_path)})
         self._init_geopackage()
 
     def _init_geopackage(self) -> None:
         """Initialize the GeoPackage with necessary tables if they don't exist."""
         # Create an empty GeoPackage file if it doesn't exist
-        if not GEOPACKAGE_PATH.exists():
-            logger.info("Creating new GeoPackage file", extra={"geopackage_path": str(GEOPACKAGE_PATH)})
+        if not self.config_file_path.exists():
+            logger.info("Creating new GeoPackage file", extra={"geopackage_path": str(self.config_file_path)})
             # Create an empty GeoDataFrame and save it to establish the GeoPackage
             empty_gdf = gpd.GeoDataFrame([], geometry=[], crs="EPSG:3857")
-            empty_gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="_init")
+            empty_gdf.to_file(self.config_file_path, driver="GPKG", layer="_init")
 
             # Create areas_of_interest layer with monitored_pixels column
             aoi_gdf = gpd.GeoDataFrame(
                 [], columns=["monitor_name", FEATURE_ID_COLUMN, "lat", "lng"], geometry=[], crs="EPSG:3857"
             )
-            aoi_gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+            aoi_gdf.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest")
         else:
-            logger.debug("GeoPackage file already exists", extra={"geopackage_path": str(GEOPACKAGE_PATH)})
+            logger.debug("GeoPackage file already exists", extra={"geopackage_path": str(self.config_file_path)})
 
         # Connect to the GeoPackage's SQLite database for non-spatial tables
         conn = self._get_connection()
@@ -121,11 +131,11 @@ class GeoConfigHandler:
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get a connection to the SQLite database underlying the GeoPackage."""
-        conn = sqlite3.connect(str(GEOPACKAGE_PATH))
+        conn = sqlite3.connect(str(self.config_file_path))
         conn.row_factory = self._dict_factory
         conn.enable_load_extension(True)
         conn.load_extension("mod_spatialite")
-        logger.debug("Established database connection", extra={"geopackage_path": str(GEOPACKAGE_PATH)})
+        logger.debug("Established database connection", extra={"geopackage_path": str(self.config_file_path)})
         return conn
 
     @staticmethod
@@ -181,7 +191,7 @@ class GeoConfigHandler:
 
         # Load existing areas_of_interest table
         try:
-            existing_aoi = gpd.read_file(GEOPACKAGE_PATH, layer="areas_of_interest")
+            existing_aoi = gpd.read_file(self.config_file_path, layer="areas_of_interest")
 
             # Delete any existing geometries for this monitor
             if not existing_aoi.empty and monitor_name in existing_aoi["monitor_name"].values:
@@ -196,7 +206,7 @@ class GeoConfigHandler:
             combined_aoi = pd.concat([existing_aoi, gdf], ignore_index=True)
 
             # Save back to GeoPackage
-            combined_aoi.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+            combined_aoi.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest")
             logger.info(
                 "Successfully saved geometry to areas_of_interest",
                 extra={"monitor_name": monitor_name, "total_features": len(combined_aoi)},
@@ -204,7 +214,7 @@ class GeoConfigHandler:
         except Exception as e:
             logger.error("Error updating areas_of_interest", extra={"monitor_name": monitor_name, "error": str(e)})
             # If there was an error, try to save just the new geometries
-            gdf.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+            gdf.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest")
             logger.warning("Saved only new geometries after error", extra={"monitor_name": monitor_name})
 
     def update_monitored_pixels(self, monitor_name: str, feature_id: str, monitored_pixels: int) -> None:
@@ -279,7 +289,7 @@ class GeoConfigHandler:
 
         try:
             # Load the areas_of_interest layer and filter for the monitor name
-            aoi = gpd.read_file(GEOPACKAGE_PATH, layer="areas_of_interest")
+            aoi = gpd.read_file(self.config_file_path, layer="areas_of_interest")
             if aoi.empty:
                 logger.warning("No geometries found in areas_of_interest table")
                 raise KeyError(f"No geometries found for monitor '{monitor_name}'")
@@ -670,14 +680,14 @@ class GeoConfigHandler:
         # Delete the geometries associated with this monitor from areas_of_interest
         try:
             # Load existing areas_of_interest
-            aoi = gpd.read_file(GEOPACKAGE_PATH, layer="areas_of_interest")
+            aoi = gpd.read_file(self.config_file_path, layer="areas_of_interest")
 
             # Filter out geometries for this monitor
             if not aoi.empty and name in aoi["monitor_name"].values:
                 filtered_aoi = aoi[aoi["monitor_name"] != name]
 
                 # Save back to GeoPackage
-                filtered_aoi.to_file(GEOPACKAGE_PATH, driver="GPKG", layer="areas_of_interest")
+                filtered_aoi.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest")
                 logger.info(
                     "Monitor and associated geometries deleted successfully",
                     extra={"monitor_name": name, "deleted_monitor_rows": deleted_rows},
@@ -836,5 +846,30 @@ class GeoConfigHandler:
         return config
 
 
-# Global instance for easy import
-geo_config = GeoConfigHandler()
+# Default instance for backward compatibility
+_default_config_handler = None
+
+
+def get_geo_config(config_file_path: Path | str | None = None) -> GeoConfigHandler:
+    """
+    Get a GeoConfigHandler instance.
+
+    Args:
+        config_file_path: Optional custom path for the GeoPackage configuration file.
+                         If None, uses default configuration or returns the default instance.
+
+    Returns:
+        GeoConfigHandler instance
+    """
+    global _default_config_handler
+
+    if config_file_path is None:
+        # Return cached default instance if available
+        if _default_config_handler is None:
+            _default_config_handler = GeoConfigHandler()
+        return _default_config_handler
+    return GeoConfigHandler(config_file_path)
+
+
+# Global instance for backward compatibility
+geo_config = get_geo_config()

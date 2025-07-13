@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from .backends import AsyncAPI, Backend, ProcessAPI
 from .constants import FEATURE_ID_COLUMN, EndpointTypes
-from .geo_config_handler import geo_config
+from .geo_config_handler import GeoConfigHandler, get_geo_config
 from .monitor_params import MonitorParameters
 
 
@@ -21,7 +21,12 @@ DatasourceTypes = Literal["S2L2A", "ARPS"]
 
 
 def initialize_monitor(
-    params: MonitorParameters, backend: BackendTypes, input_path: str | PathLike, id_column: str, **kwargs: Any
+    params: MonitorParameters,
+    backend: BackendTypes,
+    input_path: str | PathLike,
+    id_column: str,
+    config: GeoConfigHandler,
+    **kwargs: Any,
 ) -> Backend:
     """
     Initialize a new monitor.
@@ -31,6 +36,7 @@ def initialize_monitor(
         backend (BackendTypes): Backend type to use.
         input_path (str | PathLike): Path to the input geometry file.
         id_column (str): Name of the ID column in the geometry file.
+        config (GeoConfigHandler): Configuration handler instance.
         **kwargs: Additional arguments for the backend.
 
     Returns:
@@ -38,13 +44,13 @@ def initialize_monitor(
     """
     # Process the input geometry and store it in the GeoPackage
     # The geometry is stored in a layer named after the monitor
-    geo_config.prepare_geometry(input_path, id_column, params.name)
+    config.prepare_geometry(input_path, id_column, params.name)
 
     # Set the geometry_path to point to the monitor name (layer in GeoPackage)
     params.geometry_path = params.name
 
     # Initialize the backend
-    backend_instance = BACKENDS[backend](params, **kwargs)
+    backend_instance = BACKENDS[backend](params, config=config, **kwargs)
     backend_instance.init_model()
     backend_instance.dump()
     return backend_instance
@@ -67,6 +73,7 @@ def start_monitor(
     endpoint: EndpointTypes = "SENTINEL_HUB",
     overwrite: bool = False,
     load_only: bool = False,
+    config_file_path: str | PathLike | None = None,
     **kwargs: Any,
 ) -> Backend:
     """
@@ -102,9 +109,14 @@ def start_monitor(
             with less than 2500x2500 pixels and can time out. AsyncAPI can handle areas up to
             10000x10000 and doesn't time out as quickly.
         overwrite (bool): If an already existing monitor should be overwritten.
+        config_file_path (str | PathLike | None): Optional path to custom config file.
+            If None, uses default configuration.
     """
+    # Get config instance
+    config = get_geo_config(config_file_path)
+
     # Check if monitor exists in database
-    monitor_exists, backend_exists_flag, is_initialized = geo_config.backend_exists(name, backend)
+    monitor_exists, backend_exists_flag, is_initialized = config.backend_exists(name, backend)
 
     monitor_param_fields = {f.name for f in fields(MonitorParameters)}
     last_monitored = kwargs.pop("last_monitored", monitoring_start)
@@ -129,8 +141,8 @@ def start_monitor(
     )
 
     if load_only:
-        geo_config.save_monitor_params(params)
-        return BACKENDS[backend](params, **backend_kwargs)
+        config.save_monitor_params(params)
+        return BACKENDS[backend](params, config=config, **backend_kwargs)
 
     if monitor_exists and backend_exists_flag and is_initialized and not overwrite:
         raise MonitorInitializationError(
@@ -140,36 +152,43 @@ def start_monitor(
 
     if monitor_exists and backend_exists_flag and overwrite:
         # Load existing backend config
-        backend_config = geo_config.load_backend_config(name, backend)
+        backend_config = config.load_backend_config(name, backend)
 
         # Create backend instance with loaded config
-        backend_instance = BACKENDS[backend](params, **backend_kwargs, **backend_config)
+        backend_instance = BACKENDS[backend](params, config=config, **backend_kwargs, **backend_config)
         print("Deleting resources")
         backend_instance.delete()
-        return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
+        return initialize_monitor(params, backend, geometry_path, id_column, config=config, **backend_kwargs)
 
-    return initialize_monitor(params, backend, geometry_path, id_column, **backend_kwargs)
+    return initialize_monitor(params, backend, geometry_path, id_column, config=config, **backend_kwargs)
 
 
-def load_monitor(name: str, backend: BackendTypes = "ProcessAPI") -> Backend:
+def load_monitor(
+    name: str, backend: BackendTypes = "ProcessAPI", config_file_path: str | PathLike | None = None
+) -> Backend:
     """
     Load Monitor from GeoPackage
 
-    This loads a monitor object from the GeoPackage at
-    ~/.disturbancemonitor/monitor_config.gpkg.
+    This loads a monitor object from the GeoPackage.
 
     Args:
         name (str): Name of the monitor, as saved in the GeoPackage
         backend (backend): Which backend to use for the monitor.
+        config_file_path (str | PathLike | None): Optional path to custom config file.
+            If None, uses default configuration.
     """
+    # Get config instance
+    config = get_geo_config(config_file_path)
+
     # Load monitor params and backend config from database
-    monitor_config = geo_config.load_monitor_params(name)
-    backend_config = geo_config.load_backend_config(name, backend)
+    monitor_config = config.load_monitor_params(name)
+    backend_config = config.load_backend_config(name, backend)
 
     return start_monitor(
         backend=backend,
         id_column=FEATURE_ID_COLUMN,
         load_only=True,
+        config_file_path=config_file_path,
         **monitor_config,
         **backend_config,
     )
