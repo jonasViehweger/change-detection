@@ -150,6 +150,7 @@ class BYOC(Resource):
         self.folder_name = folder_name
         self.bucket_name = bucket_name
         self.client = sh_client
+        self.base_url = base_url
         self.byoc_id = byoc_id
         self.url = base_url + "/api/v1/byoc/collections"
 
@@ -187,6 +188,11 @@ class BYOC(Resource):
                     f"Ingestion of tile failed: {tile['data']['additionalData']['failedIngestionCause']}"
                 )
         print("... Ingested")
+
+    def share_byoc(self, account_id: str):
+        """Shares a collection with an account"""
+        response = self.client.post(f"{self.base_url}/api/v1/acl/collection/{self.byoc_id}/da/{account_id}/USE?notes=")
+        response.raise_for_status()
 
     def delete(self) -> None:
         """Delete the BYOC Collection"""

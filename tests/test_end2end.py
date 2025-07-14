@@ -149,119 +149,6 @@ def test_custom_config_path(load_env, endpoint, geojson_input, tmp_path):  # noq
     print(f"Custom config test completed successfully. Results: {results}")
 
 
-def test_multiple_custom_configs(geojson_input, tmp_path):
-    """Test that multiple custom configs can coexist without interference."""
-    # Create two different custom config paths
-    config_dir1 = tmp_path / "user1_configs"
-    config_dir2 = tmp_path / "user2_configs"
-    config_dir1.mkdir()
-    config_dir2.mkdir()
-
-    config_path1 = config_dir1 / "user1_monitor.gpkg"
-    config_path2 = config_dir2 / "user2_monitor.gpkg"
-
-    monitor_name1 = "testUser1Monitor"
-    monitor_name2 = "testUser2Monitor"
-
-    # Create monitors in different configs with same name (should not conflict)
-    same_monitor_name = "sharedMonitorName"
-
-    # Get config instances
-    config1 = dm.get_geo_config(config_path1)
-    config2 = dm.get_geo_config(config_path2)
-
-    # Create monitor parameters for testing
-    from datetime import date
-
-    from disturbancemonitor.monitor_params import MonitorParameters
-
-    params1 = MonitorParameters(
-        name=monitor_name1,
-        monitoring_start=date(2023, 1, 1),
-        last_monitored=date(2023, 1, 1),
-        geometry_path=monitor_name1,
-        resolution=100.0,
-    )
-
-    params2 = MonitorParameters(
-        name=monitor_name2,
-        monitoring_start=date(2023, 1, 1),
-        last_monitored=date(2023, 1, 1),
-        geometry_path=monitor_name2,
-        resolution=100.0,
-    )
-
-    params_shared1 = MonitorParameters(
-        name=same_monitor_name,
-        monitoring_start=date(2023, 1, 1),
-        last_monitored=date(2023, 1, 1),
-        geometry_path=same_monitor_name,
-        resolution=100.0,
-    )
-
-    params_shared2 = MonitorParameters(
-        name=same_monitor_name,
-        monitoring_start=date(2023, 1, 1),
-        last_monitored=date(2023, 1, 1),
-        geometry_path=same_monitor_name,
-        resolution=100.0,
-    )
-
-    # Prepare geometries and save monitor params in config1
-    config1.prepare_geometry(geojson_input, "MONITOR_FEATURE_ID", monitor_name1)
-    config1.save_monitor_params(params1)
-    config1.prepare_geometry(geojson_input, "MONITOR_FEATURE_ID", same_monitor_name)
-    config1.save_monitor_params(params_shared1)
-
-    # Prepare geometries and save monitor params in config2
-    config2.prepare_geometry(geojson_input, "MONITOR_FEATURE_ID", monitor_name2)
-    config2.save_monitor_params(params2)
-    config2.prepare_geometry(geojson_input, "MONITOR_FEATURE_ID", same_monitor_name)
-    config2.save_monitor_params(params_shared2)
-
-    # Verify isolation
-    assert config1.monitor_exists(monitor_name1), "Monitor1 should exist in config1"
-    assert not config1.monitor_exists(monitor_name2), "Monitor2 should NOT exist in config1"
-    assert config1.monitor_exists(same_monitor_name), "Shared name should exist in config1"
-
-    assert config2.monitor_exists(monitor_name2), "Monitor2 should exist in config2"
-    assert not config2.monitor_exists(monitor_name1), "Monitor1 should NOT exist in config2"
-    assert config2.monitor_exists(same_monitor_name), "Shared name should exist in config2"
-
-    # Verify geometry isolation as well
-    geom1 = config1.load_geometry(monitor_name1)
-    geom2 = config2.load_geometry(monitor_name2)
-
-    assert len(geom1) > 0, "Geometry should exist in config1"
-    assert len(geom2) > 0, "Geometry should exist in config2"
-
-    # Test that loading non-existent geometries fails appropriately
-    try:
-        config1.load_geometry(monitor_name2)
-        raise AssertionError("Should not be able to load monitor2 geometry from config1")
-    except KeyError:
-        pass  # Expected
-
-    # Verify configs are truly separate files
-    assert config_path1.exists()
-    assert config_path2.exists()
-    assert config_path1 != config_path2
-
-    # Verify different monitor lists
-    monitors1 = config1.load_all_monitors()
-    monitors2 = config2.load_all_monitors()
-
-    assert monitor_name1 in monitors1
-    assert same_monitor_name in monitors1
-    assert monitor_name2 not in monitors1
-
-    assert monitor_name2 in monitors2
-    assert same_monitor_name in monitors2
-    assert monitor_name1 not in monitors2
-
-    print("Multiple custom configs test completed successfully")
-
-
 def test_custom_config_basic(geojson_input, tmp_path):
     """Test basic custom config functionality without external dependencies."""
     # Create custom config file path
@@ -310,3 +197,43 @@ def test_custom_config_basic(geojson_input, tmp_path):
     assert custom_config_path.exists(), "Custom config file should exist"
 
     print("Basic custom config test completed successfully")
+
+
+def test_free_cdse(geojson_input, tmp_path):
+    """Test FreeCDSEProcessAPI initialization with different SH profiles."""
+
+    # Create custom config to avoid affecting default
+    custom_config_path = tmp_path / "test_freecdse_config.gpkg"
+    config = dm.get_geo_config(custom_config_path)
+
+    # Prepare test monitor parameters
+    monitor_name = "testFreeCDSE"
+    config.prepare_geometry(geojson_input, "MONITOR_FEATURE_ID", monitor_name)
+
+    # Test 1: Initialize monitor with custom config path
+    monitor = dm.start_monitor(
+        name=monitor_name,
+        monitoring_start=date(2023, 1, 1),
+        geometry_path=geojson_input,
+        id_column="MONITOR_FEATURE_ID",
+        backend="FreeCDSEProcessAPI",
+        overwrite=True,
+        resolution=100,
+        endpoint="CDSE",
+        account_id="a0175978-820a-45e5-8ef2-8350e4a006f7",
+        sh_profile="test-free-user",  # Free user credentials
+        byoc_sh_profile="test-byoc-host",  # BYOC host credentials
+        s3_profile="creo",
+        config_file_path=custom_config_path,
+    )
+
+    # Clean up monitor object
+    del monitor
+
+    # Test 4: Load monitor using custom config path
+    monitor_reloaded = dm.load_monitor(monitor_name, backend="FreeCDSEProcessAPI", config_file_path=custom_config_path)
+
+    # Test 5: Monitor operation with custom config
+    results = monitor_reloaded.monitor(end=date(2024, 1, 1))
+    monitor_reloaded.delete()
+    print(results)

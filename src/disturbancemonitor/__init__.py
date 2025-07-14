@@ -3,7 +3,7 @@ from dataclasses import fields
 from os import PathLike
 from typing import Any, Literal
 
-from .backends import AsyncAPI, Backend, ProcessAPI
+from .backends import AsyncAPI, Backend, FreeCDSEProcessAPI, ProcessAPI
 from .constants import FEATURE_ID_COLUMN, EndpointTypes
 from .geo_config_handler import GeoConfigHandler, get_geo_config
 from .monitor_params import MonitorParameters
@@ -13,8 +13,8 @@ class MonitorInitializationError(Exception):
     """Custom exception for monitor initialization errors."""
 
 
-BACKENDS = {"ProcessAPI": ProcessAPI, "AsyncAPI": AsyncAPI}
-BackendTypes = Literal["ProcessAPI", "AsyncAPI"]
+BACKENDS = {"ProcessAPI": ProcessAPI, "AsyncAPI": AsyncAPI, "FreeCDSEProcessAPI": FreeCDSEProcessAPI}
+BackendTypes = Literal["ProcessAPI", "AsyncAPI", "FreeCDSEProcessAPI"]
 SignalTypes = Literal["NDVI"]
 MetricTypes = Literal["RMSE"]
 DatasourceTypes = Literal["S2L2A", "ARPS"]

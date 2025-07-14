@@ -1,4 +1,5 @@
 import datetime
+import json
 import logging
 import sqlite3
 from dataclasses import asdict
@@ -86,14 +87,7 @@ class GeoConfigHandler:
         CREATE TABLE IF NOT EXISTS backends (
             name TEXT NOT NULL,
             backend_type TEXT NOT NULL,
-            bucket_name TEXT,
-            folder_name TEXT,
-            byoc_id TEXT,
-            instance_id TEXT,
-            monitor_id TEXT,
-            s3_profile TEXT,
-            sh_profile TEXT,
-            rollback BOOLEAN,
+            config JSON NOT NULL,
             PRIMARY KEY (name, backend_type),
             FOREIGN KEY (name) REFERENCES monitors(name) ON DELETE CASCADE
         )
@@ -122,9 +116,47 @@ class GeoConfigHandler:
         """)
         logger.debug("Created or verified monitoring_results table")
 
+        # Migrate backends table to JSON config format if needed
+        cursor.execute("PRAGMA table_info(backends)")
+        columns = [row["name"] for row in cursor.fetchall()]
+
+        # Check if we need to migrate from old column-based format to JSON
+        if "bucket_name" in columns and "config" not in columns:
+            logger.info("Migrating backends table to JSON config format")
+
+            # Get existing data
+            cursor.execute("SELECT * FROM backends")
+            existing_backends = cursor.fetchall()
+
+            # Drop and recreate table with new schema
+            cursor.execute("DROP TABLE backends")
+            cursor.execute("""
+            CREATE TABLE backends (
+                name TEXT NOT NULL,
+                backend_type TEXT NOT NULL,
+                config JSON NOT NULL,
+                PRIMARY KEY (name, backend_type),
+                FOREIGN KEY (name) REFERENCES monitors(name) ON DELETE CASCADE
+            )
+            """)
+
+            # Migrate existing data to JSON format
+            for backend in existing_backends:
+                config_dict = {}
+                for key, value in backend.items():
+                    if key not in ["name", "backend_type"] and value is not None:
+                        config_dict[key] = value
+
+                cursor.execute(
+                    "INSERT INTO backends (name, backend_type, config) VALUES (?, ?, ?)",
+                    (backend["name"], backend["backend_type"], json.dumps(config_dict)),
+                )
+
+            logger.info("Migrated backend configurations to JSON format", extra={"n_backends": len(existing_backends)})
+
         # Insert schema version
-        cursor.execute("INSERT OR REPLACE INTO metadata VALUES (?, ?)", ("schema_version", "2"))
-        logger.info("GeoPackage initialization completed with schema version 2")
+        cursor.execute("INSERT OR REPLACE INTO metadata VALUES (?, ?)", ("schema_version", "3"))
+        logger.info("GeoPackage initialization completed with schema version 3")
 
         conn.commit()
         conn.close()
@@ -366,22 +398,21 @@ class GeoConfigHandler:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        fields = list(config.keys())
-        placeholders = ", ".join(["?"] * len(fields))
-        set_clause = ", ".join([f"{field} = ?" for field in fields])
+        # Serialize config as JSON
+        config_json = json.dumps(config)
 
         cursor.execute(
-            f"""
-            INSERT INTO backends (name, backend_type, {", ".join(fields)})
-            VALUES (?, ?, {placeholders})
-            ON CONFLICT(name, backend_type) DO UPDATE SET {set_clause}
+            """
+            INSERT INTO backends (name, backend_type, config)
+            VALUES (?, ?, ?)
+            ON CONFLICT(name, backend_type) DO UPDATE SET config = ?
             """,
-            [monitor_name, backend_type] + [config[field] for field in fields] + [config[field] for field in fields],
+            [monitor_name, backend_type, config_json, config_json],
         )
 
         logger.debug(
             "Backend configuration saved successfully",
-            extra={"monitor_name": monitor_name, "backend_type": backend_type, "config_fields": fields},
+            extra={"monitor_name": monitor_name, "backend_type": backend_type, "config_fields": list(config.keys())},
         )
         conn.commit()
         conn.close()
@@ -556,7 +587,7 @@ class GeoConfigHandler:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM backends WHERE name = ? AND backend_type = ?", (name, backend_type))
+        cursor.execute("SELECT config FROM backends WHERE name = ? AND backend_type = ?", (name, backend_type))
         result = cursor.fetchone()
         conn.close()
 
@@ -564,14 +595,13 @@ class GeoConfigHandler:
             logger.error("Backend configuration not found", extra={"monitor_name": name, "backend_type": backend_type})
             raise KeyError(f"Backend configuration for monitor '{name}' with type {backend_type} not found")
 
-        # Remove name and backend_type from the result
-        result.pop("name", None)
-        result.pop("backend_type", None)
+        # Deserialize JSON config
+        config = json.loads(result["config"])
 
         logger.debug(
             "Backend configuration loaded successfully", extra={"monitor_name": name, "backend_type": backend_type}
         )
-        return result
+        return config
 
     def load_all_monitors(self) -> list[str]:
         """
