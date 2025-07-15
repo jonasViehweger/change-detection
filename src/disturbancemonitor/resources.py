@@ -17,6 +17,8 @@ from botocore.exceptions import ClientError
 from requests import Response
 from requests.exceptions import HTTPError
 
+from .constants import DATA_PATH
+
 
 class Resource:
     def delete(self) -> None:
@@ -229,6 +231,58 @@ class SHConfiguration(Resource):
             raise
         self.instance_id = instance.json()["id"]
         assert isinstance(self.instance_id, str)
+        # Creating two default S2 layers
+        # Creating True Color layer
+        layer_response = self.client.post(
+            f"{self.base_url}/api/v2/configuration/instances/{self.instance_id}/layers",
+            json={
+                "title": "TRUE-COLOR",
+                "description": "",
+                "datasetSourceId": 2,
+                "collectionType": "S2L2A",
+                "styles": [
+                    {
+                        "name": "default",
+                        "description": "Default layer style",
+                        "evalScript": "//VERSION=3\nfunction setup() {\n  return {\n    input: ['B04','B03','B02', 'dataMask'],\n    output: { bands: 4 }\n  };\n}\n\n// Contrast enhance / highlight compress\n\nconst maxR = 3.0; // max reflectance\nconst midR = 0.13;\nconst sat = 1.2;\nconst gamma = 1.8;\n\nfunction evaluatePixel(smp) {\n  const rgbLin = satEnh(sAdj(smp.B04), sAdj(smp.B03), sAdj(smp.B02));\n  return [sRGB(rgbLin[0]), sRGB(rgbLin[1]), sRGB(rgbLin[2]), smp.dataMask];\n}\n\nfunction sAdj(a) {\n  return adjGamma(adj(a, midR, 1, maxR));\n}\n\nconst gOff = 0.01;\nconst gOffPow = Math.pow(gOff, gamma);\nconst gOffRange = Math.pow(1 + gOff, gamma) - gOffPow;\n\nfunction adjGamma(b) {\n  return (Math.pow((b + gOff), gamma) - gOffPow)/gOffRange;\n}\n\n// Saturation enhancement\nfunction satEnh(r, g, b) {\n  const avgS = (r + g + b) / 3.0 * (1 - sat);\n  return [clip(avgS + r * sat), clip(avgS + g * sat), clip(avgS + b * sat)];\n}\n\nfunction clip(s) {\n  return s < 0 ? 0 : s > 1 ? 1 : s;\n}\n\n//contrast enhancement with highlight compression\nfunction adj(a, tx, ty, maxC) {\n  var ar = clip(a / maxC, 0, 1);\n  return ar * (ar * (tx/maxC + ty -1) - ty) / (ar * (2 * tx/maxC - 1) - tx/maxC);\n}\n\nconst sRGB = (c) => c <= 0.0031308 ? (12.92 * c) : (1.055 * Math.pow(c, 0.41666666666) - 0.055);\n",  # noqa: E501
+                    }
+                ],
+                "id": "TRUE-COLOR",
+                "instanceId": self.instance_id,
+                "defaultStyleName": "default",
+                "datasourceDefaults": {"type": "S2L2A", "mosaickingOrder": "leastCC", "maxCloudCoverage": 50},
+            },
+        )
+        try:
+            layer_response.raise_for_status()
+        except HTTPError as e:
+            print(f"Request failed: {e.response.status_code} - {e.response.text}")
+            raise
+        # Creating Forest Disturbance Classification layer
+        with DATA_PATH.joinpath("forest_disturbance_classification.cjs").open("r") as f:
+            classification_evalscript = f.read()
+        layer_response = self.client.post(
+            f"{self.base_url}/api/v2/configuration/instances/{self.instance_id}/layers",
+            json={
+                "title": "DISTURBANCE-CLASSIFICATION",
+                "description": "",
+                "datasetSourceId": 2,
+                "collectionType": "S2L2A",
+                "styles": [
+                    {"name": "default", "description": "Default layer style", "evalScript": classification_evalscript}
+                ],
+                "id": "DISTURBANCE-CLASSIFICATION",
+                "instanceId": self.instance_id,
+                "defaultStyleName": "default",
+                "datasourceDefaults": {"type": "S2L2A", "mosaickingOrder": "leastCC", "maxCloudCoverage": 100},
+            },
+        )
+        try:
+            layer_response.raise_for_status()
+        except HTTPError as e:
+            print(f"Request failed: {e.response.status_code} - {e.response.text}")
+            raise
+
         return self.instance_id
 
     def create_layer(self, title: str, evalscript: str, byoc_id: str) -> None:
