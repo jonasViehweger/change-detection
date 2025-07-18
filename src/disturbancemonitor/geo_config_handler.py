@@ -109,7 +109,8 @@ class GeoConfigHandler:
             monitor_name TEXT NOT NULL,
             feature_id TEXT NOT NULL,
             date TEXT NOT NULL,
-            value INTEGER NOT NULL,
+            monitored_pixels INTEGER NOT NULL,
+            disturbed_pixels INTEGER NOT NULL,
             PRIMARY KEY (monitor_name, feature_id, date),
             FOREIGN KEY (monitor_name) REFERENCES monitors(name) ON DELETE CASCADE
         )
@@ -434,17 +435,18 @@ class GeoConfigHandler:
         data_to_insert = []
         sum_disturbed = 0
         for feature_id, feature_data in results.items():
-            for date_str, value in feature_data.get("newDisturbed", {}).items():
+            for date_str, values in feature_data.get("monitorResults", {}).items():
                 # Add the record to our insertion list
                 data_to_insert.append(
                     (
                         monitor_name,
                         str(feature_id),
                         datetime.datetime.strptime(date_str, "%y%m%d").date().isoformat(),
-                        value,
+                        values["monitoredPixels"],
+                        values["disturbedPixels"],
                     )
                 )
-                sum_disturbed += value
+                sum_disturbed += values["disturbedPixels"]
 
         # Only proceed if there's data to insert
         if data_to_insert:
@@ -452,8 +454,8 @@ class GeoConfigHandler:
             cursor.executemany(
                 """
                 INSERT OR IGNORE INTO monitoring_results
-                (monitor_name, feature_id, date, value)
-                VALUES (?, ?, ?, ?)
+                (monitor_name, feature_id, date, monitored_pixels, disturbed_pixels)
+                VALUES (?, ?, ?, ?, ?)
                 """,
                 data_to_insert,
             )
@@ -495,7 +497,7 @@ class GeoConfigHandler:
         if feature_id:
             cursor.execute(
                 """
-                SELECT feature_id, date, value FROM monitoring_results
+                SELECT feature_id, date, monitored_pixels, disturbed_pixels FROM monitoring_results
                 WHERE monitor_name = ? AND feature_id = ?
                 """,
                 (monitor_name, str(feature_id)),
@@ -503,7 +505,7 @@ class GeoConfigHandler:
         else:
             cursor.execute(
                 """
-                SELECT feature_id, date, value FROM monitoring_results
+                SELECT feature_id, date, monitored_pixels, disturbed_pixels FROM monitoring_results
                 WHERE monitor_name = ?
                 """,
                 (monitor_name,),
@@ -515,22 +517,20 @@ class GeoConfigHandler:
         # Organize results into the expected structure
         structured_results = {}
         for row in results:
-            feature_id = row["feature_id"]
-            date_str = row["date"]
-            value = row["value"]
+            feature_id = row.pop("feature_id")
+            date_str = row.pop("date")
 
             if feature_id not in structured_results:
                 structured_results[feature_id] = {}
 
             # Convert date string back to datetime.date
             date = datetime.date.fromisoformat(date_str) if date_str else None
-            structured_results[feature_id][date] = value
+            structured_results[feature_id][date] = row
 
         logger.debug(
             "Monitoring results loaded successfully",
             extra={
                 "monitor_name": monitor_name,
-                "feature_count": len(structured_results),
                 "total_records": len(results),
             },
         )
