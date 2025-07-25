@@ -39,6 +39,15 @@ class GeoConfigHandler:
         # Ensure the parent directory exists
         self.config_file_path.parent.mkdir(parents=True, exist_ok=True)
         logger.debug("Initializing GeoConfigHandler", extra={"config_file_path": str(self.config_file_path)})
+        # saved in attribute to later reference for appending data in the correct order
+        self.aoi_schema = {
+            "monitor_name": pd.Series(dtype="str"),
+            FEATURE_ID_COLUMN: pd.Series(dtype="str"),
+            "lat": pd.Series(dtype="float"),
+            "lng": pd.Series(dtype="float"),
+            "monitored_pixels": pd.Series(dtype="int"),
+            "disturbed_pixels": pd.Series(dtype="int"),
+        }
         self._init_geopackage()
 
     def _init_geopackage(self) -> None:
@@ -46,14 +55,9 @@ class GeoConfigHandler:
         # Create an empty GeoPackage file if it doesn't exist
         if not self.config_file_path.exists():
             logger.info("Creating new GeoPackage file", extra={"geopackage_path": str(self.config_file_path)})
-            # Create an empty GeoDataFrame and save it to establish the GeoPackage
-            empty_gdf = gpd.GeoDataFrame([], geometry=[], crs="EPSG:3857")
-            empty_gdf.to_file(self.config_file_path, driver="GPKG", layer="_init")
 
             # Create areas_of_interest layer with monitored_pixels column
-            aoi_gdf = gpd.GeoDataFrame(
-                [], columns=["monitor_name", FEATURE_ID_COLUMN, "lat", "lng"], geometry=[], crs="EPSG:3857"
-            )
+            aoi_gdf = gpd.GeoDataFrame(self.aoi_schema, geometry=[], crs="EPSG:3857")
             aoi_gdf.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest")
         else:
             logger.debug("GeoPackage file already exists", extra={"geopackage_path": str(self.config_file_path)})
@@ -168,6 +172,8 @@ class GeoConfigHandler:
         conn.row_factory = self._dict_factory
         conn.enable_load_extension(True)
         conn.load_extension("mod_spatialite")
+        # Enable foreign key constraints
+        conn.execute("PRAGMA foreign_keys = ON")
         logger.debug("Established database connection", extra={"geopackage_path": str(self.config_file_path)})
         return conn
 
@@ -209,46 +215,72 @@ class GeoConfigHandler:
         # Add monitor_name column
         gdf["monitor_name"] = monitor_name
 
-        # Ensure monitored_pixels column exists and is properly typed
-        if "monitored_pixels" not in gdf.columns:
-            gdf["monitored_pixels"] = None
-        # Ensure the column is float64 to map to REAL in SQLite
-        gdf["monitored_pixels"] = gdf["monitored_pixels"].astype("float64")
-
-        # Explode any MultiPolygons into separate Polygons
-        if any(gdf.geometry.type.isin(["MultiPolygon"])):
-            logger.debug("Exploding MultiPolygons to Polygons", extra={"monitor_name": monitor_name})
-            gdf = gdf.explode(index_parts=False)
-            # Filter to keep only Polygon geometries
-            gdf = gdf[gdf.geometry.type == "Polygon"]
-
-        # Load existing areas_of_interest table
         try:
-            existing_aoi = gpd.read_file(self.config_file_path, layer="areas_of_interest")
-
-            # Delete any existing geometries for this monitor
-            if not existing_aoi.empty and monitor_name in existing_aoi["monitor_name"].values:
-                logger.debug("Removing existing geometries for monitor", extra={"monitor_name": monitor_name})
-                existing_aoi = existing_aoi[existing_aoi["monitor_name"] != monitor_name]
-
-            # Ensure existing_aoi has the same column types
-            if not existing_aoi.empty and "monitored_pixels" in existing_aoi.columns:
-                existing_aoi["monitored_pixels"] = existing_aoi["monitored_pixels"].astype("float64")
-
-            # Concatenate with new geometries
-            combined_aoi = pd.concat([existing_aoi, gdf], ignore_index=True)
-
-            # Save back to GeoPackage
-            combined_aoi.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest")
+            # Column order has to match exactly for appending to work
+            correct_order_gdf = gdf[*self.aoi_schema.keys(), "geometry"]
+            correct_order_gdf.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest", mode="a")
             logger.info(
                 "Successfully saved geometry to areas_of_interest",
-                extra={"monitor_name": monitor_name, "total_features": len(combined_aoi)},
+                extra={"monitor_name": monitor_name, "total_features": len(gdf)},
             )
         except Exception as e:
-            logger.error("Error updating areas_of_interest", extra={"monitor_name": monitor_name, "error": str(e)})
-            # If there was an error, try to save just the new geometries
-            gdf.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest")
-            logger.warning("Saved only new geometries after error", extra={"monitor_name": monitor_name})
+            logger.error("Error saving areas_of_interest", extra={"monitor_name": monitor_name, "error": str(e)})
+
+    def prepare_geometry(self, input_path: str | Path, id_column: str, monitor_name: str) -> None:
+        """
+        Load a geometry file, reproject it to EPSG:3857, ensure the ID column is present,
+        check for uniqueness, and save it to the areas_of_interest table.
+
+        Args:
+            input_path: Path to the input geometry file
+            id_column: Name of the ID column in the input file
+            monitor_name: Name of the monitor to associate with the geometries
+        """
+        logger.info(
+            "Preparing geometry",
+            extra={"input_path": str(input_path), "id_column": id_column, "monitor_name": monitor_name},
+        )
+
+        # Convert path-like objects to strings
+        input_path_str = str(input_path) if isinstance(input_path, Path) else input_path
+
+        # Load the input geometry with GeoPandas
+        gdf = gpd.read_file(input_path_str).to_crs(epsg=3857).rename(columns={id_column: FEATURE_ID_COLUMN})
+        logger.debug(
+            "Loaded and reprojected geometry file", extra={"monitor_name": monitor_name, "feature_count": len(gdf)}
+        )
+
+        # Add WGS84 centroid
+        centroids = gdf.to_crs(epsg=4326).centroid
+        gdf["lat"] = centroids.y
+        gdf["lng"] = centroids.x
+
+        # Initialize monitored_pixels column as float64 to ensure REAL type in SQLite
+        gdf["monitored_pixels"] = pd.Series(dtype="int")
+        gdf["disturbed_pixels"] = pd.Series(dtype="int")
+
+        # Check for any geometries which aren't POLYGONS
+        if not all(gdf.geometry.type == "Polygon"):
+            logger.error(
+                "Invalid geometry types found",
+                extra={"monitor_name": monitor_name, "geometry_types": gdf.geometry.type.unique().tolist()},
+            )
+            raise ValueError("All geometries must be of type POLYGON")
+
+        # Check for uniqueness in the id_column
+        is_unique = gdf[FEATURE_ID_COLUMN].is_unique
+        if not is_unique:
+            logger.error(
+                "Duplicate IDs found in geometry", extra={"monitor_name": monitor_name, "id_column": FEATURE_ID_COLUMN}
+            )
+            raise ValueError("Duplicate ID found")
+
+        # Save to areas_of_interest in GeoPackage
+        self.save_geometry(monitor_name, gdf)
+        logger.info(
+            "Geometry preparation completed successfully",
+            extra={"monitor_name": monitor_name, "final_feature_count": len(gdf)},
+        )
 
     def update_monitored_pixels(self, monitor_name: str, feature_id: str, monitored_pixels: int) -> None:
         """
@@ -783,62 +815,6 @@ class GeoConfigHandler:
             logger.debug("Monitor state updated successfully", extra={"monitor_name": name, "new_state": state})
         else:
             logger.warning("No monitor found to update state", extra={"monitor_name": name, "new_state": state})
-
-    def prepare_geometry(self, input_path: str | Path, id_column: str, monitor_name: str) -> None:
-        """
-        Load a geometry file, reproject it to EPSG:3857, ensure the ID column is present,
-        check for uniqueness, and save it to the areas_of_interest table.
-
-        Args:
-            input_path: Path to the input geometry file
-            id_column: Name of the ID column in the input file
-            monitor_name: Name of the monitor to associate with the geometries
-        """
-        logger.info(
-            "Preparing geometry",
-            extra={"input_path": str(input_path), "id_column": id_column, "monitor_name": monitor_name},
-        )
-
-        # Convert path-like objects to strings
-        input_path_str = str(input_path) if isinstance(input_path, Path) else input_path
-
-        # Load the input geometry with GeoPandas
-        gdf = gpd.read_file(input_path_str).to_crs(epsg=3857).rename(columns={id_column: FEATURE_ID_COLUMN})
-        logger.debug(
-            "Loaded and reprojected geometry file", extra={"monitor_name": monitor_name, "feature_count": len(gdf)}
-        )
-
-        # Add WGS84 centroid
-        centroids = gdf.to_crs(epsg=4326).centroid
-        gdf["lat"] = centroids.y
-        gdf["lng"] = centroids.x
-
-        # Initialize monitored_pixels column as float64 to ensure REAL type in SQLite
-        gdf["monitored_pixels"] = pd.Series(dtype="float64")
-        gdf["disturbed_pixels"] = 0
-
-        # Check for any geometries which aren't POLYGONS
-        if not all(gdf.geometry.type == "Polygon"):
-            logger.error(
-                "Invalid geometry types found",
-                extra={"monitor_name": monitor_name, "geometry_types": gdf.geometry.type.unique().tolist()},
-            )
-            raise ValueError("All geometries must be of type POLYGON")
-
-        # Check for uniqueness in the id_column
-        is_unique = gdf[FEATURE_ID_COLUMN].is_unique
-        if not is_unique:
-            logger.error(
-                "Duplicate IDs found in geometry", extra={"monitor_name": monitor_name, "id_column": FEATURE_ID_COLUMN}
-            )
-            raise ValueError("Duplicate ID found")
-
-        # Save to areas_of_interest in GeoPackage
-        self.save_geometry(monitor_name, gdf)
-        logger.info(
-            "Geometry preparation completed successfully",
-            extra={"monitor_name": monitor_name, "final_feature_count": len(gdf)},
-        )
 
     def load_config(self) -> dict[str, Any]:
         """

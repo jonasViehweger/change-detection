@@ -363,7 +363,8 @@ class ProcessAPI(Backend):
         self.byoc.delete()
         self.sh_configuration.delete()
         self.monitor_params.state = "DELETED"
-        self.config.update_monitor_state(self.monitor_params.name, "DELETED")
+        self.config.delete_monitor(self.monitor_params.name)
+        self.config.delete_monitoring_results(self.monitor_params.name)
 
 
 class FreeCDSEProcessAPI(Backend):
@@ -671,7 +672,8 @@ class FreeCDSEProcessAPI(Backend):
         self.byoc.delete()
         self.sh_configuration.delete()
         self.monitor_params.state = "DELETED"
-        self.config.update_monitor_state(self.monitor_params.name, "DELETED")
+        self.config.delete_monitor(self.monitor_params.name)
+        self.config.delete_monitoring_results(self.monitor_params.name)
 
 
 class AsyncAPI(Backend):
