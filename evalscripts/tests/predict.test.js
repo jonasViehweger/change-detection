@@ -26,7 +26,9 @@ const scenes = {
 
 function predictTest(preProcessScenes, evaluatePixel) {
   preProcessScenes(collectionsDf);
-  return evaluatePixel(dataFusion, scenes);
+  let testResult = evaluatePixel(dataFusion, scenes);
+  console.log(monitorResults)
+  return testResult
 }
 
 test("Test monitoring over a time series. Result should be ignored", () => {

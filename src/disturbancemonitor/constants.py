@@ -1,10 +1,24 @@
+import os
 from dataclasses import dataclass
 from enum import Enum
 from importlib.resources import files
 from pathlib import Path
 from typing import Literal, get_args
 
-CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
+DEFAULT_CONFIG_PATH = Path().home() / ".config" / "disturbancemonitor"
+DEFAULT_CONFIG_FILE = "monitor_config.gpkg"
+
+
+def get_default_config_file_path() -> Path:
+    """Get the default configuration file path, with environment variable override support."""
+    config_dir = os.getenv("DISTURBANCEMONITOR_CONFIG_DIR")
+    config_file = os.getenv("DISTURBANCEMONITOR_CONFIG_FILE", DEFAULT_CONFIG_FILE)
+
+    if config_dir:
+        return Path(config_dir) / config_file
+    return DEFAULT_CONFIG_PATH / config_file
+
+
 DATA_PATH = files("disturbancemonitor.data")
 FEATURE_ID_COLUMN = "MONITOR_FEATURE_ID"
 

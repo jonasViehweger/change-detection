@@ -1,7 +1,6 @@
-import dateToNumber from "../utils/dateToNumber";
-
 //VERSION=3
-var lastMonitored = "2024-01-01"
+var start = 1;
+var end = Infinity;
 
 function setup() {
   return {
@@ -15,29 +14,11 @@ function setup() {
   };
 }
 
-const end = dateToNumber(lastMonitored)
-const start = end - 10000;
-
-const ramp = [
-  [start, 0xffffd9],
-  // [20230215, 0xedf8b1],
-  // [20230401, 0xc7e9b4],
-  // [20230519, 0x7fcdbb],
-  // [20230703, 0x41b6c4],
-  // [20230817, 0x1d91c0],
-  // [20231001, 0x225ea8],
-  // [20231115, 0x253494],
-  [end, 0x081d58],
-];
-
-const visualizer = new ColorRampVisualizer(ramp);
-
 function evaluatePixel(sample) {
-  // Return RGB
-  let opacity = sample.dataMask;
-  if(sample.disturbedDate == 0) opacity = 0;
+  let opacity = 0;
+  if (sample.disturbedDate >= start && sample.disturbedDate <= end) opacity = 1
   return {
-    default: visualizer.process(sample.disturbedDate).concat(opacity),
+    default: [1,0,0].concat(opacity),
     index: [sample.disturbedDate],
     eobrowserStats: [sample.disturbedDate],
     dataMask: [sample.dataMask],

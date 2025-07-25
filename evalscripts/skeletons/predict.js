@@ -49,10 +49,13 @@ function preProcessScenes(collections) {
     (scene) => new Date(scene.dateFrom)
   );
   fullX = makeRegression(dates, c.HARMONICS);
+  dateNrs = collections[c.DATASOURCE].scenes.orbits.map(
+    (scene) => dateToNumber(scene.dateFrom)
+  );
   return collections;
 }
 
-var disturbed = {};
+var monitorResults = {};
 
 function evaluatePixel(samples, scenes) {
   const b = samples.beta[0];
@@ -68,14 +71,18 @@ function evaluatePixel(samples, scenes) {
   for (let i = 0; i < samples[c.DATASOURCE].length; i++) {
     const sample = samples[c.DATASOURCE][i];
     if (ds.validate(sample)) {
+      currentDate = dateNrs[i]
+      if(!(currentDate in monitorResults)){
+          monitorResults[currentDate] = {"monitoredPixels": 0, "disturbedPixels": 0}
+      }
+      monitorResults[currentDate]["monitoredPixels"]++
       const y = ds.inputs[c.INPUT].calculate(sample);
       const X = fullX[i];
       const pred = dot(X, beta);
       process = updateProcessCCDC(pred, y, process, b.metric);
       if (process >= c.BOUND) {
-        disturbedDate = dateToNumber(scenes[c.DATASOURCE].scenes.orbits[i].dateFrom);
-        const count = disturbed[disturbedDate] || 0;
-        disturbed[disturbedDate] = count + 1;
+        disturbedDate = currentDate
+        monitorResults[currentDate]["disturbedPixels"]++;
         break;
       }
     }
@@ -84,7 +91,7 @@ function evaluatePixel(samples, scenes) {
 }
 
 function updateOutputMetadata(scenes, inputMetadata, outputMetadata){
-  outputMetadata.userData = { "newDisturbed":  disturbed }
+  outputMetadata.userData = {"monitorResults": monitorResults}
 }
 
 function updateProcessCCDC(pred, actual, process, rmse = 1) {
