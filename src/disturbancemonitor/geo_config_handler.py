@@ -42,7 +42,7 @@ class GeoConfigHandler:
         # saved in attribute to later reference for appending data in the correct order
         self.aoi_schema = {
             "monitor_name": pd.Series(dtype="str"),
-            FEATURE_ID_COLUMN: pd.Series(dtype="str"),
+            FEATURE_ID_COLUMN: pd.Series(dtype="int"),
             "lat": pd.Series(dtype="float"),
             "lng": pd.Series(dtype="float"),
             "monitored_pixels": pd.Series(dtype="int"),
