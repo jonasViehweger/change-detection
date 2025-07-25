@@ -217,7 +217,7 @@ class GeoConfigHandler:
 
         try:
             # Column order has to match exactly for appending to work
-            correct_order_gdf = gdf[*self.aoi_schema.keys(), "geometry"]
+            correct_order_gdf = gdf[[*self.aoi_schema.keys(), "geometry"]]
             correct_order_gdf.to_file(self.config_file_path, driver="GPKG", layer="areas_of_interest", mode="a")
             logger.info(
                 "Successfully saved geometry to areas_of_interest",
@@ -225,6 +225,7 @@ class GeoConfigHandler:
             )
         except Exception as e:
             logger.error("Error saving areas_of_interest", extra={"monitor_name": monitor_name, "error": str(e)})
+            raise e
 
     def prepare_geometry(self, input_path: str | Path, id_column: str, monitor_name: str) -> None:
         """

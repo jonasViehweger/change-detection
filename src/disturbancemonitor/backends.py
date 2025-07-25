@@ -128,7 +128,12 @@ class ProcessAPI(Backend):
     def init_model(self) -> None:
         self.monitor_params.state = "INITIALIZING"
         self.dump()
-        with ResourceManager(rollback=self.rollback) as manager:
+
+        def set_failed_status():
+            self.monitor_params.state = "FAILED"
+            self.config.update_monitor_state(self.monitor_params.name, "FAILED")
+
+        with ResourceManager(rollback=self.rollback, on_failure_callback=set_failed_status) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
             self.s3.create_bucket(self.urls.bucket_location)
@@ -436,7 +441,12 @@ class FreeCDSEProcessAPI(Backend):
     def init_model(self) -> None:
         self.monitor_params.state = "INITIALIZING"
         self.dump()
-        with ResourceManager(rollback=self.rollback) as manager:
+
+        def set_failed_status():
+            self.monitor_params.state = "FAILED"
+            self.config.update_monitor_state(self.monitor_params.name, "FAILED")
+
+        with ResourceManager(rollback=self.rollback, on_failure_callback=set_failed_status) as manager:
             print("0/6 Initializing model")
             print("1/6 Creating bucket")
             self.s3.create_bucket(self.urls.bucket_location)

@@ -26,9 +26,10 @@ class Resource:
 
 
 class ResourceManager:
-    def __init__(self, rollback: bool = True):
+    def __init__(self, rollback: bool = True, on_failure_callback=None):
         self.resources: list[Resource] = []
         self.rollback = rollback
+        self.on_failure_callback = on_failure_callback
 
     def add_resource(self, resource: Resource) -> None:
         self.resources.append(resource)
@@ -41,6 +42,8 @@ class ResourceManager:
     ) -> Literal[False]:
         if exc_type:
             print(f"Exception occurred: {exc_val}. \nRolling back resources.")
+            if self.on_failure_callback:
+                self.on_failure_callback()
             for resource in reversed(self.resources):
                 if self.rollback:
                     resource.delete()
