@@ -9,9 +9,9 @@ hide:
 <div class="hero-wrapper">
   <div class="hero-section">
     <div class="hero-content">
-      <h1>Disturbance Monitor</h1>
+      <h1>Land Change Monitor</h1>
       <h2>Near Real-Time Land Use Change Detection</h2>
-      <p>Monitor land disturbances using satellite imagery and the power of Continuous Change Detection and Classification (CCDC) algorithm. Get alerted to deforestation, and other changes as they happen.</p>
+      <p>Monitor land disturbances using satellite imagery. Get alerted to deforestation, road and house construction and other changes as they happen.</p>
       <div class="hero-buttons">
         <a href="getting-started/" class="md-button md-button--primary">
           Get Started
@@ -23,17 +23,10 @@ hide:
       </div>
     </div>
     <div class="hero-image">
-      <div class="mermaid">
-        graph LR
-            A[🛰️ Satellite Data] --> B[📊 Time Series Analysis]
-            B --> C[🔍 Change Detection]
-            C --> D[🚨 Disturbance Alert]
-
-            style A fill:#e1f5fe
-            style B fill:#f3e5f5
-            style C fill:#fff3e0
-            style D fill:#ffebee
-      </div>
+        <div class="image-container">
+            <img class="image-default" src="./assets/screenshots/dashboard-undisturbed.png" alt="Undisturbed dashboard" />
+            <img class="image-hover" src="./assets/screenshots/dashboard-disturbed.png" alt="Disturbance dashboard" />
+        </div>
     </div>
   </div>
 </div>
@@ -152,7 +145,7 @@ monitor.monitor()
     display: flex;
     align-items: center;
     gap: 3rem;
-    max-width: 1200px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 0 2rem;
 }
@@ -199,9 +192,50 @@ monitor.monitor()
 }
 
 .hero-image {
-    flex: 1;
+    flex: 1.5;
     text-align: center;
+    perspective: 1000px;
 }
+
+.image-container {
+    position: relative;
+    display: inline-block;
+}
+
+.image-container img {
+    max-width: 100%;
+    height: auto;
+    width: 700px;
+    border-radius: 8px;
+    transform: perspective(1000px) rotate3D(0, 1, 0, -30deg);
+    box-shadow:
+        0 20px 40px rgba(0, 0, 0, 0.15),
+        0 10px 20px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+}
+
+.image-hover {
+    position: absolute;
+    top: 0;
+    left: 0;
+    opacity: 0;
+}
+
+.image-container:hover .image-default {
+    transform: scale(1.3) rotate3D(0, 1, 0, -15deg);
+    box-shadow:
+        0 30px 60px rgba(0, 0, 0, 0.2),
+        0 15px 30px rgba(0, 0, 0, 0.15);
+}
+
+.image-container:hover .image-hover {
+    opacity: 1;
+    transform: scale(1.3) rotate3D(0, 1, 0, -15deg);
+    box-shadow:
+        0 30px 60px rgba(0, 0, 0, 0.2),
+        0 15px 30px rgba(0, 0, 0, 0.15);
+}
+
 
 .cta-section {
     text-align: center;
