@@ -1,0 +1,346 @@
+/* Custom Earthy Color Scheme - Accessible Design */
+:root {
+  /* Base color palette: earthy browns and greens */
+  --brand-primary: #1f2718;    /* Dark green primary */
+  --brand-accent: #654a2b;     /* Brown accent */
+  --brand-warning: #e59500;    /* Orange warning */
+  --brand-light: #484c3a;      /* Medium olive green */
+  --brand-secondary: #665b3e;  /* Dark brown secondary */
+
+  /* Material Design override colors */
+  --md-primary-fg-color: #1f2718;
+  --md-primary-fg-color--light: #484c3a;
+  --md-primary-fg-color--dark: #151b10;
+  --md-accent-fg-color: #654a2b;
+
+  /* Extended palette for better gradients and accessibility */
+  --color-primary-50: 248, 249, 247;   /* Very light olive tint */
+  --color-primary-100: 240, 242, 237;  /* Light olive tint */
+  --color-primary-200: 220, 225, 215;  /* Lighter olive */
+  --color-primary-300: 180, 190, 170;  /* Light olive */
+  --color-primary-400: 120, 135, 110;  /* Medium olive */
+  --color-primary-500: 31, 39, 24;     /* Primary dark green */
+  --color-primary-600: 25, 31, 19;     /* Darker primary */
+  --color-primary-700: 20, 25, 15;     /* Very dark green */
+  --color-primary-800: 15, 19, 12;     /* Darkest green */
+  --color-primary-900: 10, 13, 8;      /* Almost black */
+
+  /* Accessible text colors */
+  --color-text-primary: 31, 39, 24;    /* Dark green text on light backgrounds */
+  --color-text-secondary: 102, 91, 62; /* Brown secondary text */
+  --color-text-muted: 120, 135, 110;   /* Muted olive text */
+  --color-text-inverse: 255, 255, 255; /* White text */
+
+  /* Background colors using neutral tones */
+  --color-background: 252, 251, 249;   /* Warm white background */
+  --color-surface: 255, 255, 255;      /* Pure white surface */
+  --color-surface-secondary: 245, 243, 240; /* Light warm gray secondary */
+
+  /* Border colors */
+  --color-border: 220, 215, 205;       /* Warm gray border */
+  --color-border-light: 235, 232, 228; /* Light warm border */
+
+  /* Semantic Colors */
+  --color-success: 31, 39, 24;         /* Primary green for success */
+  --color-warning: 229, 149, 0;        /* Orange warning */
+  --color-error: 185, 28, 28;          /* Red error */
+  --color-info: 72, 76, 58;            /* Olive info */
+}
+
+[data-md-color-scheme="light-change"] {
+  /* Primary colors - using earthy palette */
+  --md-primary-fg-color: var(--brand-primary);
+  --md-primary-fg-color--light: var(--brand-light);
+  --md-primary-fg-color--dark: #151b10;
+  --md-accent-fg-color: var(--brand-accent);
+
+  /* Background colors */
+  --md-default-bg-color: rgb(var(--color-background));
+  --md-default-fg-color: rgb(var(--color-text-primary));
+  --md-default-fg-color--light: rgb(var(--color-text-secondary));
+  --md-default-fg-color--lighter: rgb(var(--color-text-muted));
+  --md-default-fg-color--lightest: #cbd5e1;
+
+  /* Code colors */
+  --md-code-bg-color: rgb(var(--color-surface-secondary));
+  --md-code-fg-color: rgb(var(--color-text-primary));
+
+  /* Link colors */
+  --md-typeset-a-color: var(--brand-primary);
+
+  /* Header */
+  --md-header-bg-color: rgb(var(--color-surface));
+  --md-header-fg-color: rgb(var(--color-text-primary));
+
+  /* Navigation */
+  --md-nav-bg-color: rgb(var(--color-surface));
+  --md-nav-fg-color: rgb(var(--color-text-primary));
+
+  /* Footer */
+  --md-footer-bg-color: var(--brand-primary);
+  --md-footer-bg-color--dark: #151b10;
+  --md-footer-fg-color: rgb(var(--color-text-inverse));
+
+  /* Tables */
+  --md-typeset-table-color: rgb(var(--color-text-primary));
+
+  /* Admonitions */
+  --md-admonition-bg-color: rgb(var(--color-primary-50));
+
+  /* Search */
+  --md-search-result-mark-bg-color: rgb(var(--color-primary-200));
+  --md-search-result-mark-color: rgb(var(--color-text-primary));
+}
+
+[data-md-color-scheme="dark-change"] {
+  /* Dark theme color overrides */
+  --color-background: 15, 19, 12;      /* Very dark green background */
+  --color-surface: 25, 31, 19;         /* Dark green surface */
+  --color-surface-secondary: 35, 44, 27; /* Secondary dark surface */
+
+  --color-border: 72, 76, 58;          /* Olive border color */
+  --color-border-light: 102, 91, 62;   /* Brown border */
+
+  --color-text-primary: 245, 243, 240; /* Light warm text */
+  --color-text-secondary: 180, 190, 170; /* Light olive text */
+  --color-text-muted: 120, 135, 110;   /* Muted olive text */
+  --color-text-inverse: 31, 39, 24;    /* Dark green text for light backgrounds */
+
+  /* Primary colors for dark theme */
+  --md-primary-fg-color: var(--brand-light);
+  --md-primary-fg-color--light: #665b3e;
+  --md-primary-fg-color--dark: var(--brand-primary);
+  --md-accent-fg-color: var(--brand-warning);
+
+  /* Background colors */
+  --md-default-bg-color: rgb(var(--color-background));
+  --md-default-fg-color: rgb(var(--color-text-primary));
+  --md-default-fg-color--light: rgb(var(--color-text-secondary));
+  --md-default-fg-color--lighter: rgb(var(--color-text-muted));
+  --md-default-fg-color--lightest: #64748b;
+
+  /* Code colors */
+  --md-code-bg-color: rgb(var(--color-surface-secondary));
+  --md-code-fg-color: rgb(var(--color-text-primary));
+
+  /* Link colors */
+  --md-typeset-a-color: var(--brand-light);
+
+  /* Header */
+  --md-header-bg-color: rgb(var(--color-surface));
+  --md-header-fg-color: rgb(var(--color-text-primary));
+
+  /* Navigation */
+  --md-nav-bg-color: rgb(var(--color-surface));
+  --md-nav-fg-color: rgb(var(--color-text-primary));
+
+  /* Footer */
+  --md-footer-bg-color: #10130c;
+  --md-footer-bg-color--dark: #000000;
+  --md-footer-fg-color: rgb(var(--color-text-primary));
+
+  /* Tables */
+  --md-typeset-table-color: rgb(var(--color-text-primary));
+
+  /* Admonitions */
+  --md-admonition-bg-color: rgba(31, 39, 24, 0.1);
+
+  /* Search */
+  --md-search-result-mark-bg-color: var(--brand-warning);
+  --md-search-result-mark-color: rgb(var(--color-text-inverse));
+
+  /* Semantic Colors for Dark Theme */
+  --color-success: 180, 190, 170;      /* Light olive for success */
+  --color-warning: 229, 149, 0;        /* Orange warning */
+  --color-error: 220, 38, 38;          /* Bright red error */
+  --color-info: 102, 91, 62;           /* Brown info */
+}
+
+/* Enhanced component styling with accessibility focus */
+
+/* Header enhancements */
+.md-header {
+  border-bottom: 1px solid rgba(31, 39, 24, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+/* Navigation active states */
+.md-nav__item--active > .md-nav__link {
+  color: var(--brand-primary);
+  font-weight: 600;
+}
+
+.md-nav__link:hover {
+  color: var(--brand-primary);
+  transition: color 0.2s ease-in-out;
+}
+
+.md-nav__link:focus {
+  color: var(--brand-primary);
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Button styling with accessibility focus */
+.md-button {
+  background-color: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: rgb(var(--color-text-inverse));
+  font-weight: 500;
+  transition: all 0.2s ease-in-out;
+  border-radius: 6px;
+}
+
+.md-button:hover {
+  background-color: #151b10;
+  border-color: #151b10;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(31, 39, 24, 0.25);
+}
+
+.md-button:focus {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+.md-button:active {
+  transform: translateY(0);
+}
+
+/* Table styling */
+.md-typeset table:not([class]) {
+  border: 1px solid rgba(31, 39, 24, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: rgb(var(--color-primary-50));
+  color: rgb(var(--color-text-primary));
+  font-weight: 600;
+}
+
+[data-md-color-scheme="dark-change"] .md-typeset table:not([class]) th {
+  background-color: rgba(31, 39, 24, 0.1);
+  color: rgb(var(--color-text-primary));
+}
+
+/* Admonition styling with better contrast */
+.md-typeset .admonition {
+  border-left: 4px solid var(--brand-primary);
+  background-color: rgb(var(--color-primary-50));
+  border-radius: 0 6px 6px 0;
+}
+
+[data-md-color-scheme="dark-change"] .md-typeset .admonition {
+  background-color: rgba(31, 39, 24, 0.05);
+}
+
+.md-typeset .admonition.note {
+  border-left-color: rgb(var(--color-info));
+}
+
+.md-typeset .admonition.warning {
+  border-left-color: rgb(var(--color-warning));
+}
+
+.md-typeset .admonition.danger {
+  border-left-color: rgb(var(--color-error));
+}
+
+.md-typeset .admonition.success {
+  border-left-color: var(--brand-primary);
+}
+
+/* Code block enhancements */
+.md-typeset pre > code {
+  border-radius: 8px;
+}
+
+.md-typeset .highlight {
+  border-radius: 8px;
+}
+
+/* Search enhancements */
+.md-search__input {
+  border-radius: 8px;
+}
+
+.md-search__input:focus {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+/* Tab styling */
+.md-tabs {
+  background-color: var(--brand-primary);
+  color: rgb(var(--color-text-inverse));
+}
+
+.md-tabs__link {
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+.md-tabs__link:hover {
+  color: rgb(var(--color-text-inverse));
+}
+
+.md-tabs__link--active {
+  color: rgb(var(--color-text-inverse));
+  font-weight: 600;
+}
+
+/* Sidebar enhancements */
+.md-sidebar {
+  border-right: 1px solid rgba(31, 39, 24, 0.1);
+}
+
+[data-md-color-scheme="dark-change"] .md-sidebar {
+  border-right-color: rgba(180, 190, 170, 0.1);
+}
+
+/* Content enhancements */
+.md-content {
+  border-radius: 12px 12px 0 0;
+}
+
+/* Footer styling */
+.md-footer {
+  background: linear-gradient(135deg, rgb(var(--color-primary-800)) 0%, #10130c 100%);
+}
+
+/* Skip link for accessibility */
+.md-skip {
+  background-color: var(--brand-primary);
+  color: rgb(var(--color-text-inverse));
+  border-radius: 4px;
+}
+
+.md-skip:focus {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --md-primary-fg-color: #000000;
+    --md-accent-fg-color: #654a2b;
+  }
+
+  [data-md-color-scheme="dark-change"] {
+    --md-primary-fg-color: #ffffff;
+    --md-accent-fg-color: #e59500;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

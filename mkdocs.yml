@@ -8,15 +8,11 @@ theme:
   name: material
   custom_dir: overrides
   palette:
-    - scheme: default
-      primary: green
-      accent: light green
+    - scheme: light-change
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
-    - scheme: slate
-      primary: green
-      accent: light green
+    - scheme: dark-change
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -60,6 +56,9 @@ plugins:
       handlers:
         python:
           paths: [src]
+
+extra_css:
+  - stylesheets/extra.css
 
 extra_javascript:
   - https://unpkg.com/mermaid@10.6.1/dist/mermaid.min.js
