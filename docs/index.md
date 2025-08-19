@@ -33,6 +33,10 @@ hide:
 
 ## Key Features
 
+### Free Quota Available
+
+You can use your Copernicus Dataspace Ecosystem quota to monitor areas that interest you. Completely free of charge!
+
 <div class="grid cards" markdown="1">
 
 - :material-satellite-variant: **Satellite-Powered**

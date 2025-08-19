@@ -6,6 +6,7 @@ repo_name: jonasViehweger/change-detection
 
 theme:
   name: material
+  logo: assets/logo_grayscale.svg
   custom_dir: overrides
   palette:
     - scheme: light-change

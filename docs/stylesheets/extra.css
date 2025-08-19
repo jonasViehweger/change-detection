@@ -1,166 +1,163 @@
-/* Custom Earthy Color Scheme - Accessible Design */
+/* Custom Earthy Color Scheme - Material Design Compatible */
 :root {
-  /* Base color palette: earthy browns and greens */
+  /* Brand color palette: earthy browns and greens */
   --brand-primary: #1f2718;    /* Dark green primary */
   --brand-accent: #654a2b;     /* Brown accent */
   --brand-warning: #e59500;    /* Orange warning */
   --brand-light: #484c3a;      /* Medium olive green */
   --brand-secondary: #665b3e;  /* Dark brown secondary */
 
-  /* Material Design override colors */
-  --md-primary-fg-color: #1f2718;
-  --md-primary-fg-color--light: #484c3a;
-  --md-primary-fg-color--dark: #151b10;
-  --md-accent-fg-color: #654a2b;
-
-  /* Extended palette for better gradients and accessibility */
-  --color-primary-50: 248, 249, 247;   /* Very light olive tint */
-  --color-primary-100: 240, 242, 237;  /* Light olive tint */
-  --color-primary-200: 220, 225, 215;  /* Lighter olive */
-  --color-primary-300: 180, 190, 170;  /* Light olive */
-  --color-primary-400: 120, 135, 110;  /* Medium olive */
-  --color-primary-500: 31, 39, 24;     /* Primary dark green */
-  --color-primary-600: 25, 31, 19;     /* Darker primary */
-  --color-primary-700: 20, 25, 15;     /* Very dark green */
-  --color-primary-800: 15, 19, 12;     /* Darkest green */
-  --color-primary-900: 10, 13, 8;      /* Almost black */
-
-  /* Accessible text colors */
-  --color-text-primary: 31, 39, 24;    /* Dark green text on light backgrounds */
-  --color-text-secondary: 102, 91, 62; /* Brown secondary text */
-  --color-text-muted: 120, 135, 110;   /* Muted olive text */
-  --color-text-inverse: 255, 255, 255; /* White text */
-
-  /* Background colors using neutral tones */
-  --color-background: 252, 251, 249;   /* Warm white background */
-  --color-surface: 255, 255, 255;      /* Pure white surface */
-  --color-surface-secondary: 245, 243, 240; /* Light warm gray secondary */
-
-  /* Border colors */
-  --color-border: 220, 215, 205;       /* Warm gray border */
-  --color-border-light: 235, 232, 228; /* Light warm border */
-
-  /* Semantic Colors */
-  --color-success: 31, 39, 24;         /* Primary green for success */
-  --color-warning: 229, 149, 0;        /* Orange warning */
-  --color-error: 185, 28, 28;          /* Red error */
-  --color-info: 72, 76, 58;            /* Olive info */
-}
-
-[data-md-color-scheme="light-change"] {
-  /* Primary colors - using earthy palette */
+  /* Material Design primary colors */
   --md-primary-fg-color: var(--brand-primary);
   --md-primary-fg-color--light: var(--brand-light);
   --md-primary-fg-color--dark: #151b10;
   --md-accent-fg-color: var(--brand-accent);
 
-  /* Background colors */
-  --md-default-bg-color: rgb(var(--color-background));
-  --md-default-fg-color: rgb(var(--color-text-primary));
-  --md-default-fg-color--light: rgb(var(--color-text-secondary));
-  --md-default-fg-color--lighter: rgb(var(--color-text-muted));
-  --md-default-fg-color--lightest: #cbd5e1;
+  /* Default color shades - based on brand colors */
+  --md-default-fg-color: hsla(75, 24%, 12%, 0.87);      /* Dark green text */
+  --md-default-fg-color--light: hsla(75, 24%, 12%, 0.54);
+  --md-default-fg-color--lighter: hsla(75, 24%, 12%, 0.32);
+  --md-default-fg-color--lightest: hsla(75, 24%, 12%, 0.07);
+  --md-default-bg-color: hsla(48, 20%, 98%, 1);          /* Warm white */
+  --md-default-bg-color--light: hsla(48, 20%, 98%, 0.7);
+  --md-default-bg-color--lighter: hsla(48, 20%, 98%, 0.3);
+  --md-default-bg-color--lightest: hsla(48, 20%, 98%, 0.12);
 
-  /* Code colors */
-  --md-code-bg-color: rgb(var(--color-surface-secondary));
-  --md-code-fg-color: rgb(var(--color-text-primary));
+  /* Code color shades - using brand colors */
+  --md-code-fg-color: var(--brand-primary);
+  --md-code-bg-color: hsla(48, 20%, 96%, 1);             /* Light warm background */
 
-  /* Link colors */
+  /* Code highlighting color shades */
+  --md-code-hl-color: hsla(40, 100%, 45%, 1);            /* Warning color for highlights */
+  --md-code-hl-color--light: hsla(40, 100%, 45%, 0.1);
+
+  /* Code highlighting syntax color shades */
+  --md-code-hl-number-color: hsla(0, 67%, 50%, 1);
+  --md-code-hl-special-color: hsla(340, 83%, 47%, 1);
+  --md-code-hl-function-color: hsla(30, 35%, 30%, 1);    /* Brown function color */
+  --md-code-hl-constant-color: hsla(75, 24%, 20%, 1);    /* Dark green constant */
+  --md-code-hl-keyword-color: hsla(40, 100%, 45%, 1);    /* Warning color for keywords */
+  --md-code-hl-string-color: hsla(75, 35%, 25%, 1);      /* Darker green for strings */
+  --md-code-hl-name-color: var(--md-code-fg-color);
+  --md-code-hl-operator-color: var(--md-default-fg-color--light);
+  --md-code-hl-punctuation-color: var(--md-default-fg-color--light);
+  --md-code-hl-comment-color: var(--md-default-fg-color--light);
+  --md-code-hl-generic-color: var(--md-default-fg-color--light);
+  --md-code-hl-variable-color: var(--md-default-fg-color--light);
+
+  /* Typeset color shades */
+  --md-typeset-color: var(--md-default-fg-color);
   --md-typeset-a-color: var(--brand-primary);
 
-  /* Header */
-  --md-header-bg-color: rgb(var(--color-surface));
-  --md-header-fg-color: rgb(var(--color-text-primary));
+  /* Typeset del and ins color shades */
+  --md-typeset-del-color: hsla(6, 90%, 60%, 0.15);
+  --md-typeset-ins-color: hsla(75, 35%, 35%, 0.15);      /* Green insert color */
 
-  /* Navigation */
-  --md-nav-bg-color: rgb(var(--color-surface));
-  --md-nav-fg-color: rgb(var(--color-text-primary));
+  /* Typeset kbd color shades */
+  --md-typeset-kbd-color: hsla(48, 20%, 98%, 1);
+  --md-typeset-kbd-accent-color: hsla(0, 100%, 100%, 1);
+  --md-typeset-kbd-border-color: hsla(30, 15%, 72%, 1);  /* Brown border */
+
+  /* Typeset mark color shades */
+  --md-typeset-mark-color: hsla(40, 100%, 80%, 0.5);     /* Light warning color */
+
+  /* Typeset table color shades */
+  --md-typeset-table-color: hsla(75, 24%, 12%, 0.12);
+  --md-typeset-table-color--light: hsla(75, 24%, 12%, 0.035);
+
+  /* Admonition color shades */
+  --md-admonition-fg-color: var(--md-default-fg-color);
+  --md-admonition-bg-color: var(--md-default-bg-color);
+
+  /* Warning color shades */
+  --md-warning-fg-color: hsla(75, 24%, 12%, 0.87);
+  --md-warning-bg-color: hsla(40, 100%, 80%, 1);         /* Light warning background */
+
+  /* Footer color shades */
+  --md-footer-fg-color: hsla(0, 0%, 100%, 1);
+  --md-footer-fg-color--light: hsla(0, 0%, 100%, 0.7);
+  --md-footer-fg-color--lighter: hsla(0, 0%, 100%, 0.45);
+  --md-footer-bg-color: var(--brand-primary);
+  --md-footer-bg-color--dark: hsla(75, 24%, 8%, 0.9);
+}
+
+[data-md-color-scheme="light-change"] {
+  /* Material Design 3 theme colors from light.css */
+  --md-primary-fg-color: rgb(10 18 5);
+  --md-primary-fg-color--light: rgb(88 97 79);
+  --md-primary-fg-color--dark: rgb(31 39 24);
+  --md-accent-fg-color: rgb(84 79 60);
+
+  /* Surface and background colors */
+  --md-default-bg-color: rgb(252 249 246);
+  --md-default-fg-color: rgb(27 28 26);
+  --md-default-fg-color--light: rgba(67, 72, 70, 0.54);
+  --md-default-fg-color--lighter: rgba(67, 72, 70, 0.32);
+  --md-default-fg-color--lightest: rgba(67, 72, 70, 0.07);
+
+  /* Code colors */
+  --md-code-fg-color: rgb(28 27 27);
+  --md-code-bg-color: rgb(241 237 236);
+
+  /* Typography colors */
+  --md-typeset-a-color: rgb(10 18 5);
+  --md-typeset-color: rgb(27 28 26);
 
   /* Footer */
-  --md-footer-bg-color: var(--brand-primary);
-  --md-footer-bg-color--dark: #151b10;
-  --md-footer-fg-color: rgb(var(--color-text-inverse));
-
-  /* Tables */
-  --md-typeset-table-color: rgb(var(--color-text-primary));
-
-  /* Admonitions */
-  --md-admonition-bg-color: rgb(var(--color-primary-50));
-
-  /* Search */
-  --md-search-result-mark-bg-color: rgb(var(--color-primary-200));
-  --md-search-result-mark-color: rgb(var(--color-text-primary));
+  --md-footer-bg-color: rgb(10 18 5);
+  --md-footer-fg-color: rgb(255 255 255);
 }
 
 [data-md-color-scheme="dark-change"] {
-  /* Dark theme color overrides */
-  --color-background: 15, 19, 12;      /* Very dark green background */
-  --color-surface: 25, 31, 19;         /* Dark green surface */
-  --color-surface-secondary: 35, 44, 27; /* Secondary dark surface */
+  /* Material Design 3 theme colors from dark.css */
+  --md-primary-fg-color: rgb(192 202 179);
+  --md-primary-fg-color--light: rgb(220 230 207);
+  --md-primary-fg-color--dark: rgb(43 51 35);
+  --md-accent-fg-color: rgb(206 198 174);
 
-  --color-border: 72, 76, 58;          /* Olive border color */
-  --color-border-light: 102, 91, 62;   /* Brown border */
+  /* Surface and background colors */
+  --md-default-bg-color: rgb(19 19 18);
+  --md-default-fg-color: rgb(229 226 223);
+  --md-default-fg-color--light: rgba(195, 199, 197, 0.54);
+  --md-default-fg-color--lighter: rgba(195, 199, 197, 0.32);
+  --md-default-fg-color--lightest: rgba(195, 199, 197, 0.07);
 
-  --color-text-primary: 245, 243, 240; /* Light warm text */
-  --color-text-secondary: 180, 190, 170; /* Light olive text */
-  --color-text-muted: 120, 135, 110;   /* Muted olive text */
-  --color-text-inverse: 31, 39, 24;    /* Dark green text for light backgrounds */
+  /* Code colors for dark theme */
+  --md-code-fg-color: rgb(229 226 225);
+  --md-code-bg-color: rgb(32 31 31);
 
-  /* Primary colors for dark theme */
-  --md-primary-fg-color: var(--brand-light);
-  --md-primary-fg-color--light: #665b3e;
-  --md-primary-fg-color--dark: var(--brand-primary);
-  --md-accent-fg-color: var(--brand-warning);
+  /* Code highlighting for dark theme */
+  --md-code-hl-color: rgb(255 180 171);
+  --md-code-hl-color--light: rgba(255, 180, 171, 0.1);
 
-  /* Background colors */
-  --md-default-bg-color: rgb(var(--color-background));
-  --md-default-fg-color: rgb(var(--color-text-primary));
-  --md-default-fg-color--light: rgb(var(--color-text-secondary));
-  --md-default-fg-color--lighter: rgb(var(--color-text-muted));
-  --md-default-fg-color--lightest: #64748b;
+  /* Typeset colors for dark theme */
+  --md-typeset-color: rgb(229 226 223);
+  --md-typeset-a-color: rgb(192 202 179);
+  --md-typeset-kbd-color: rgb(28 27 27);
+  --md-typeset-kbd-border-color: rgb(141 146 143);
 
-  /* Code colors */
-  --md-code-bg-color: rgb(var(--color-surface-secondary));
-  --md-code-fg-color: rgb(var(--color-text-primary));
+  /* Table colors for dark theme */
+  --md-typeset-table-color: rgba(195, 199, 197, 0.12);
+  --md-typeset-table-color--light: rgba(195, 199, 197, 0.035);
 
-  /* Link colors */
-  --md-typeset-a-color: var(--brand-light);
+  /* Admonition colors for dark theme */
+  --md-admonition-bg-color: rgb(32 31 31);
 
-  /* Header */
-  --md-header-bg-color: rgb(var(--color-surface));
-  --md-header-fg-color: rgb(var(--color-text-primary));
+  /* Warning colors for dark theme */
+  --md-warning-fg-color: rgb(229 226 223);
+  --md-warning-bg-color: rgb(147 0 10);
 
-  /* Navigation */
-  --md-nav-bg-color: rgb(var(--color-surface));
-  --md-nav-fg-color: rgb(var(--color-text-primary));
-
-  /* Footer */
-  --md-footer-bg-color: #10130c;
-  --md-footer-bg-color--dark: #000000;
-  --md-footer-fg-color: rgb(var(--color-text-primary));
-
-  /* Tables */
-  --md-typeset-table-color: rgb(var(--color-text-primary));
-
-  /* Admonitions */
-  --md-admonition-bg-color: rgba(31, 39, 24, 0.1);
-
-  /* Search */
-  --md-search-result-mark-bg-color: var(--brand-warning);
-  --md-search-result-mark-color: rgb(var(--color-text-inverse));
-
-  /* Semantic Colors for Dark Theme */
-  --color-success: 180, 190, 170;      /* Light olive for success */
-  --color-warning: 229, 149, 0;        /* Orange warning */
-  --color-error: 220, 38, 38;          /* Bright red error */
-  --color-info: 102, 91, 62;           /* Brown info */
+  /* Footer colors for dark theme */
+  --md-footer-bg-color: rgb(20 19 19);
+  --md-footer-bg-color--dark: rgb(14 14 14);
+  --md-footer-fg-color: rgb(229 226 225);
 }
 
 /* Enhanced component styling with accessibility focus */
 
 /* Header enhancements */
 .md-header {
-  border-bottom: 1px solid rgba(31, 39, 24, 0.1);
+  border-bottom: 1px solid hsla(75, 24%, 12%, 0.1);
   backdrop-filter: blur(10px);
 }
 
@@ -186,7 +183,7 @@
 .md-button {
   background-color: var(--brand-primary);
   border-color: var(--brand-primary);
-  color: rgb(var(--color-text-inverse));
+  color: white;
   font-weight: 500;
   transition: all 0.2s ease-in-out;
   border-radius: 6px;
@@ -196,7 +193,7 @@
   background-color: #151b10;
   border-color: #151b10;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(31, 39, 24, 0.25);
+  box-shadow: 0 4px 12px hsla(75, 24%, 12%, 0.25);
 }
 
 .md-button:focus {
@@ -210,43 +207,43 @@
 
 /* Table styling */
 .md-typeset table:not([class]) {
-  border: 1px solid rgba(31, 39, 24, 0.2);
+  border: 1px solid hsla(75, 24%, 12%, 0.2);
   border-radius: 8px;
   overflow: hidden;
 }
 
 .md-typeset table:not([class]) th {
-  background-color: rgb(var(--color-primary-50));
-  color: rgb(var(--color-text-primary));
+  background-color: hsla(48, 20%, 96%, 1);
+  color: var(--md-default-fg-color);
   font-weight: 600;
 }
 
 [data-md-color-scheme="dark-change"] .md-typeset table:not([class]) th {
-  background-color: rgba(31, 39, 24, 0.1);
-  color: rgb(var(--color-text-primary));
+  background-color: hsla(75, 24%, 12%, 1);
+  color: var(--md-default-fg-color);
 }
 
 /* Admonition styling with better contrast */
 .md-typeset .admonition {
   border-left: 4px solid var(--brand-primary);
-  background-color: rgb(var(--color-primary-50));
+  background-color: hsla(48, 20%, 98%, 1);
   border-radius: 0 6px 6px 0;
 }
 
 [data-md-color-scheme="dark-change"] .md-typeset .admonition {
-  background-color: rgba(31, 39, 24, 0.05);
+  background-color: hsla(75, 24%, 10%, 1);
 }
 
 .md-typeset .admonition.note {
-  border-left-color: rgb(var(--color-info));
+  border-left-color: var(--brand-light);
 }
 
 .md-typeset .admonition.warning {
-  border-left-color: rgb(var(--color-warning));
+  border-left-color: var(--brand-warning);
 }
 
 .md-typeset .admonition.danger {
-  border-left-color: rgb(var(--color-error));
+  border-left-color: hsla(0, 67%, 50%, 1);
 }
 
 .md-typeset .admonition.success {
@@ -275,30 +272,30 @@
 /* Tab styling */
 .md-tabs {
   background-color: var(--brand-primary);
-  color: rgb(var(--color-text-inverse));
+  color: white;
 }
 
 .md-tabs__link {
-  color: rgba(255, 255, 255, 0.8);
+  color: hsla(0, 0%, 100%, 0.8);
   font-weight: 500;
 }
 
 .md-tabs__link:hover {
-  color: rgb(var(--color-text-inverse));
+  color: white;
 }
 
 .md-tabs__link--active {
-  color: rgb(var(--color-text-inverse));
+  color: white;
   font-weight: 600;
 }
 
 /* Sidebar enhancements */
 .md-sidebar {
-  border-right: 1px solid rgba(31, 39, 24, 0.1);
+  border-right: 1px solid hsla(75, 24%, 12%, 0.1);
 }
 
 [data-md-color-scheme="dark-change"] .md-sidebar {
-  border-right-color: rgba(180, 190, 170, 0.1);
+  border-right-color: hsla(48, 20%, 95%, 0.1);
 }
 
 /* Content enhancements */
@@ -308,13 +305,13 @@
 
 /* Footer styling */
 .md-footer {
-  background: linear-gradient(135deg, rgb(var(--color-primary-800)) 0%, #10130c 100%);
+  background: linear-gradient(135deg, var(--brand-primary) 0%, #10130c 100%);
 }
 
 /* Skip link for accessibility */
 .md-skip {
   background-color: var(--brand-primary);
-  color: rgb(var(--color-text-inverse));
+  color: white;
   border-radius: 4px;
 }
 
@@ -327,12 +324,12 @@
 @media (prefers-contrast: high) {
   :root {
     --md-primary-fg-color: #000000;
-    --md-accent-fg-color: #654a2b;
+    --md-accent-fg-color: var(--brand-accent);
   }
 
   [data-md-color-scheme="dark-change"] {
     --md-primary-fg-color: #ffffff;
-    --md-accent-fg-color: #e59500;
+    --md-accent-fg-color: var(--brand-warning);
   }
 }
 
