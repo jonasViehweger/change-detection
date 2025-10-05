@@ -1,236 +1,108 @@
 # Getting Started
 
-Welcome to Disturbance Monitor! This guide will help you set up and start monitoring disturbances in satellite time series data.
+This guide will help you set up and start monitoring changes in satellite time series data.
 
-## Installation
+## Registration
 
-### Prerequisites
+No formal registration is necessary. All that is necessary is an account with [Copernicus Dataspace Ecosystem](https://dataspace.copernicus.eu/) and a valid set of Sentinel Hub Client ID and Secret.
 
-- Python 3.12 or higher
-- A Copernicus Dataspace Ecosystem account (free)
+See [this guide](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html#registering-oauth-client) on how to get your Oauth client ID and Secret.
+With these you can use your free CDSE quota to create and monitor any area in the world.
 
-### Install from GitHub
+Once you have the Client ID and Secret ready, head over to [the log in page](https://login.de) and enter the dashboard.
 
-```bash
-pip install git+https://github.com/jonasViehweger/change-detection.git
-```
+## Overview
 
-### Development Installation
+![Overview page](./assets/screenshots/overview-empty-light.png#only-light)
+![Overview page](./assets/screenshots/overview-empty-dark.png#only-dark)
 
-If you want to contribute or modify the code:
+Once logged in you will be able to see the overview. If it is your first time logging in, this overview should be empty. So now let's start monitoring our first area by clicking on "Create New Monitor" on the top right.
 
-```bash
-git clone https://github.com/jonasViehweger/change-detection.git
-cd change-detection
-pip install -e .
-```
+### Creating a new monitor
 
-## Setup
+This will bring you to a creation wizard.
 
-### Copernicus Dataspace Ecosystem
+![Creation Wizard](./assets/screenshots/wizard-step-1-light.png#only-light)
+![Creation Wizard](./assets/screenshots/wizard-step-1-dark.png#only-dark)
 
-1. Create a free account at [Copernicus Dataspace Ecosystem](https://dataspace.copernicus.eu/)
-2. Note your credentials for API access
-3. Set up authentication (see Authentication section below)
+#### AOI
 
-### Authentication
+In this creation wizard we first need to define our area of interest (AOI) that we want to monitor.
 
-Create a `.env` file in your project directory or set environment variables:
+You can either supply a GeoJSON file or draw a polygon if you do not have a GeoJSON file ready.
 
-```bash
-# .env file
-COPERNICUS_USERNAME=your_username
-COPERNICUS_PASSWORD=your_password
-```
+!!! info
 
-Or export them directly:
+    The GeoJSON must have a column which defines a unique ID for each polygon
 
-```bash
-export COPERNICUS_USERNAME="your_username"
-export COPERNICUS_PASSWORD="your_password"
-```
+#### Resolution
 
-## Basic Usage
+Then you need to pick a monitoring resolution. The monitoring resolution will determine the minimum size of changes that will be able to be tracked. The used Sentinel 2 data is limited to a minimum resolution of 10 m per pixel, however if only very large changes are expected you can save processing costs and monitor larger areas by setting a coarser resolution of up to 100 m per pixel.
 
-### 1. Define Your Area of Interest
+!!! info
 
-Create a GeoJSON polygon for the area you want to monitor:
+    Due to the used cloud processing tool, AOIs are limited to 2500x2500 pixels. This means that at the highest resolution of 10 m per pixel each Polygon is restricted to a maximum extent of 2.5 km height by 2.5km width.
 
-```python
-import disturbancemonitor as dm
-from datetime import date
+#### Monitoring sensitivity and confirmation period
 
-# Example: Small area in the Amazon
-geojson_aoi = {
-    "type": "Feature",
-    "geometry": {
-        "type": "Polygon",
-        "coordinates": [[
-            [-60.0, -3.0],  # West, South
-            [-59.9, -3.0],  # East, South
-            [-59.9, -2.9],  # East, North
-            [-60.0, -2.9],  # West, North
-            [-60.0, -3.0]   # Close polygon
-        ]]
-    }
-}
-```
+The monitoring sensitivity sets how sensitive the monitoring should be. The lower the sensitivity the more false alarms there can be. If you only want to monitor very large changes it can be possible to further decrease the sensitivity.
 
-### 2. Initialize a Monitor
+Due to the nature of satellite data, clouds or other image artifacts can trigger the monitoring. To decrease the impact of those artifacts, the confirmation period exists. It specifies for how many subsequent satellite acquisitions a change needs to persist to actually be confirmed as a change.
 
-```python
-monitor = dm.start_monitor(
-    name="AmazonWatch",
-    monitoring_start=date(2024, 1, 1),
-    geometry=geojson_aoi,
-)
-```
+The defaults should be fine for most applications.
 
-### 3. Run Monitoring
+#### Monitoring start
 
-```python
-# Check for new disturbances
-results = monitor.monitor()
+![Creation Wizard](./assets/screenshots/wizard-step-2-light.png#only-light)
+![Creation Wizard](./assets/screenshots/wizard-step-2-dark.png#only-dark)
 
-# Check results
-if results.disturbances_detected:
-    print(f"Found {len(results.disturbances)} disturbances!")
-    for disturbance in results.disturbances:
-        print(f"Date: {disturbance.date}, Confidence: {disturbance.confidence}")
-```
+In the next step you set the start of the monitoring. This is usually the current day to start monitoring for the future. However to be able to test how the system performs on areas where you know a change you would like to monitor has already happened, the start date can also be set to a date in the past.
 
-### 4. Save and Load Monitors
+#### Name
 
-```python
-# Save monitor configuration
-monitor.dump()
+Finally just give a descriptive name to your monitor and you will be good to go.
 
-# Later, reload the monitor
-reloaded_monitor = dm.load_monitor(name="AmazonWatch")
-```
+### Monitor overview
 
-## Configuration Options
+![Creation Wizard](./assets/screenshots/overview-initializing-light.png#only-light)
+![Creation Wizard](./assets/screenshots/overview-initializing-dark.png#only-dark)
 
-### Monitor Parameters
+In the monitoring overview your newly created monitor should now be visible. Right after creation it is getting initialized. Depending on how many AOIs are monitored, this initialization might take a few minutes. Refresh the overview page to see if it is finished.
 
-| Parameter | Type | Description | Default |
-|-----------|------|-------------|---------|
-| `name` | str | Unique identifier for the monitor | Required |
-| `monitoring_start` | date | Start date for monitoring | Required |
-| `geometry` | dict | GeoJSON geometry of area to monitor | Required |
-| `threshold` | float | Change detection sensitivity | 0.05 |
-| `min_observations` | int | Minimum observations before detection | 12 |
+![Creation Wizard](./assets/screenshots/overview-after-init-light.png#only-light)
+![Creation Wizard](./assets/screenshots/overview-after-init-dark.png#only-dark)
 
-### Advanced Configuration
+Once the initialization is finished, the status changes to `INITIALIZED`. If the monitoring start of your monitor is in the past you can now bring your monitor up to date. For this you can use the update button on the right hand side of the column.
 
-```python
-monitor = dm.start_monitor(
-    name="CustomMonitor",
-    monitoring_start=date(2024, 1, 1),
-    geometry=geojson_aoi,
-    threshold=0.03,  # More sensitive
-    min_observations=20,  # More stable baseline
-    bands=['B04', 'B08', 'B11'],  # Custom band selection
-)
-```
+![Creation Wizard](./assets/screenshots/overview-updating-light.png#only-light)
+![Creation Wizard](./assets/screenshots/overview-updating-dark.png#only-dark)
 
-## Understanding Results
+Once the update is done you can see in the overview if any changes happened during that time. If there were changes, the disturbed area will be red and show total disturbed area as well as percentage of monitored area which was disturbed.
 
-### Disturbance Object
+![Creation Wizard](./assets/screenshots/overview-monitored-light.png#only-light)
+![Creation Wizard](./assets/screenshots/overview-monitored-dark.png#only-dark)
 
-Each detected disturbance contains:
+You can have a more detailed look at what happened in the detail view for the monitor which you can view by clicking on the row.
 
-- `date`: When the disturbance was detected
-- `confidence`: Confidence score (0-1)
-- `magnitude`: Change magnitude
-- `geometry`: Spatial extent of the disturbance
-- `metadata`: Additional information
+### Monitor detail
 
-### Result Visualization
+![Creation Wizard](./assets/screenshots/detail-light.png#only-light)
+![Creation Wizard](./assets/screenshots/detail-dark.png#only-dark)
 
-```python
-# Plot results
-results.plot_time_series()
-results.plot_disturbances_map()
+The Detail view is split in two major parts.
 
-# Export results
-results.to_geojson("disturbances.geojson")
-results.to_csv("disturbances.csv")
-```
+#### Disturbance Timeline
 
-## Common Use Cases
+The disturbance timeline is visible on the left. It shows a timeline for each Polygon. By default it shows a yearly view split into weeks. For each week it shows if there was a cloud free satellite acquisition in that week. If there wasn't an acquisition the week is colored in grey. If there was an acquisition, it shows if a NEW disturbance was detected that week. If not, the bar is green, if yes it is colored red or orange based on how much area was disturbed. You can click each bar to see the satellite image which was acquired in that week.
 
-### Forest Monitoring
+!!! info
 
-```python
-# Monitor a forest reserve
-forest_monitor = dm.start_monitor(
-    name="ForestReserve",
-    monitoring_start=date(2024, 1, 1),
-    geometry=forest_geojson,
-    threshold=0.02,  # Sensitive to small changes
-)
-```
+    Once an area was disturbed, it is removed from the monitoring. Afterwards only areas that are newly disturbed are flagged in the disturbance timeline
 
-### Fire Detection
+#### Satellite view
 
-```python
-# Quick fire detection
-fire_monitor = dm.start_monitor(
-    name="FireWatch",
-    monitoring_start=date.today() - timedelta(days=30),
-    geometry=fire_prone_area,
-    bands=['B12', 'B11', 'B04'],  # Good for fire detection
-)
-```
+On the right hand side is an interactive satellite view. By default it shows the most recent cloud free acquisition for the monitored area and all pixels which the monitor flagged as possible disturbances. You can toggle these disturbances in the top right by clicking on "Disturbed Areas".
 
-### Urban Expansion
+Once you click on a bar, it will show the satellite image from that date and ONLY the newly disturbed pixels in red which were added on this date.
 
-```python
-# Monitor urban growth
-urban_monitor = dm.start_monitor(
-    name="CityGrowth",
-    monitoring_start=date(2023, 1, 1),
-    geometry=city_boundary,
-    threshold=0.1,  # Less sensitive for gradual changes
-)
-```
-
-## Troubleshooting
-
-### Common Issues
-
-**Authentication Errors**
-```
-Error: Invalid credentials
-```
-- Check your Copernicus Dataspace credentials
-- Ensure environment variables are set correctly
-
-**No Data Available**
-```
-Warning: No satellite data found for the specified period
-```
-- Check if your area of interest has satellite coverage
-- Verify the date range is reasonable
-- Ensure geometry is valid GeoJSON
-
-**Memory Issues**
-```
-MemoryError: Unable to allocate array
-```
-- Reduce the size of your area of interest
-- Increase the monitoring period to reduce data density
-
-### Getting Help
-
-- Check the [Reference](reference.md) documentation
-- File issues on [GitHub](https://github.com/jonasViehweger/change-detection/issues)
-- Review example notebooks in the repository
-
-## Next Steps
-
-- Explore the [Reference](reference.md) for detailed API documentation
-- Check out example notebooks in the repository
-- Set up automated monitoring with scheduling tools
-- Integrate with alerting systems for real-time notifications
+In the top right you also have the option to interactively apply a forest disturbance classification to the currently displayed satellite image. The classification gives a first idea on what caused the disturbance. The classes are bark beetle (orange), wildfire (red), clear cut (grey) and windthrow (blue). See [here](https://custom-scripts.sentinel-hub.com/sentinel-2/forest_disturbance_classification/) for more information on this classification.

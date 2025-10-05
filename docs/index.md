@@ -24,80 +24,62 @@ hide:
     </div>
     <div class="hero-image">
         <div class="image-container">
-            <img class="image-default" src="./assets/screenshots/dashboard-undisturbed.png" alt="Undisturbed dashboard" />
-            <img class="image-hover" src="./assets/screenshots/dashboard-disturbed.png" alt="Disturbance dashboard" />
+            <img class="image-default" src="./assets/screenshots/dashboard-undisturbed-dark.png#only-dark" alt="Undisturbed dashboard" />
+            <img class="image-hover" src="./assets/screenshots/detail-dark.png#only-dark" alt="Disturbance dashboard" />
+            <img class="image-default" src="./assets/screenshots/dashboard-undisturbed-light.png#only-light" alt="Undisturbed dashboard" />
+            <img class="image-hover" src="./assets/screenshots/detail-light.png#only-light" alt="Disturbance dashboard" />
         </div>
     </div>
   </div>
 </div>
 
-## Key Features
-
-### Free Quota Available
-
-You can use your Copernicus Dataspace Ecosystem quota to monitor areas that interest you. Completely free of charge!
-
-<div class="grid cards" markdown="1">
-
-- :material-satellite-variant: **Satellite-Powered**
-
-    ---
-
-    Leverages Sentinel Hub APIs through the Copernicus Dataspace Ecosystem for comprehensive Earth observation data.
-
-- :material-clock-fast: **Near Real-Time**
-
-    ---
-
-    Detect disturbances as they happen with automated monitoring of new satellite acquisitions.
-
-- :material-brain: **CCDC Algorithm**
-
-    ---
-
-    Uses proven Continuous Change Detection and Classification methodology for accurate results.
-
-- :material-api: **Easy Integration**
-
-    ---
-
-    Simple Python API that integrates seamlessly into your existing workflows and systems.
-
-</div>
-
-## Quick Example
-
-```python
-import disturbancemonitor as dm
-from datetime import date
-
-# Define your area of interest
-geojson_aoi = {
-    "type": "Feature",
-    "geometry": {
-        "type": "Polygon",
-        "coordinates": [[[100.0, 0.0], [101.0, 0.0], [101.0, 1.0], [100.0, 1.0], [100.0, 0.0]]]
-    }
-}
-
-# Start monitoring
-monitor = dm.start_monitor(
-    name="ForestWatch",
-    monitoring_start=date.today(),
-    geometry=geojson_aoi,
-)
-
-# Check for new disturbances
-monitor.monitor()
-```
-
 ## Use Cases
 
-- **Forest Conservation**: Monitor protected areas for illegal logging and deforestation
-- **Fire Detection**: Early warning systems for wildfire management
-- **Agricultural Monitoring**: Track crop health and harvest patterns
-- **Urban Planning**: Monitor urban expansion and land use changes
-- **Environmental Research**: Study ecosystem changes over time
+=== "Forest"
+
+    <div class="result" markdown>
+
+    ![Image title](https://dummyimage.com/600x400/f5f5f5/aaaaaa?text=–%20Image%20–){ align=right width=300 }
+
+    - Monitor for deforestation
+    - Get alerts for declining forest health
+    - Automatic classification of likely cause of forest disturbance
+
+    </div>
+
+=== "Construction"
+
+    <div class="result" markdown>
+
+    ![Image title](https://dummyimage.com/600x400/f5f5f5/aaaaaa?text=–%20Image%20–){ align=right width=300 }
+
+    - Get alerted for new construction
+    - See road development
+    - Monitor building activity
+    - See increase of built up area
+
+    </div>
+
+=== "Land Conversion"
+
+    <div class="result" markdown>
+
+    ![Image title](https://dummyimage.com/600x400/f5f5f5/aaaaaa?text=–%20Image%20–){ align=right width=300 }
+
+    - Monitor any other kind of land conversion
+    - New development of forest
+    - Conversion to agriculture
+    - Conversion from Grassland
+    - Land abandonment
+
+    </div>
+
+## Method
+
+Monitoring is based on modelling previous behaviour of the area and alerting on deviations from that model.
+
+The success of the monitoring depends on how well the normal behaviour can be captured. It also depends on how well the change is visible in satellite imagery and how much it deviates from normal behaviour.
+Large and abrupt changes are more easily captured than smaller changes.
 
 ---
 
@@ -105,7 +87,7 @@ monitor.monitor()
 
 ### Ready to Start Monitoring?
 
-[Install Now :material-download:](getting-started.md){ .md-button .md-button--primary .md-button--large }
+[Get Started](getting-started.md){ .md-button .md-button--primary .md-button--large }
 
 </div>
 

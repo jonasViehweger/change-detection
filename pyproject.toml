@@ -15,6 +15,7 @@ dependencies = [
   "s3fs",
   "python-dotenv>=1.0.1",
   "geopandas>=1.0.1",
+  "mkdocs-glightbox>=0.5.1",
 ]
 
 [tool.mypy]

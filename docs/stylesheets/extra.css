@@ -47,7 +47,7 @@
 
   /* Typeset color shades */
   --md-typeset-color: var(--md-default-fg-color);
-  --md-typeset-a-color: var(--brand-primary);
+  --md-typeset-a-color: var(--brand-accent);
 
   /* Typeset del and ins color shades */
   --md-typeset-del-color: hsla(6, 90%, 60%, 0.15);
@@ -97,10 +97,10 @@
 
   /* Code colors */
   --md-code-fg-color: rgb(28 27 27);
-  --md-code-bg-color: rgb(241 237 236);
+  --md-code-bg-color: rgb(240 235 235);
 
   /* Typography colors */
-  --md-typeset-a-color: rgb(10 18 5);
+  --md-typeset-a-color: var(--brand-accent);
   --md-typeset-color: rgb(27 28 26);
 
   /* Footer */
@@ -110,21 +110,25 @@
 
 [data-md-color-scheme="dark-change"] {
   /* Material Design 3 theme colors from dark.css */
-  --md-primary-fg-color: rgb(192 202 179);
-  --md-primary-fg-color--light: rgb(220 230 207);
-  --md-primary-fg-color--dark: rgb(43 51 35);
-  --md-accent-fg-color: rgb(206 198 174);
+  --md-primary-fg-color: rgb(10 18 5);
+  --md-primary-fg-color--light: var(--brand-light);
+  --md-primary-fg-color--dark: #151b10;
+  --md-accent-fg-color: var(--brand-accent);
 
   /* Surface and background colors */
-  --md-default-bg-color: rgb(19 19 18);
+  --md-default-bg-color: rgb(61, 61, 61);
   --md-default-fg-color: rgb(229 226 223);
   --md-default-fg-color--light: rgba(195, 199, 197, 0.54);
   --md-default-fg-color--lighter: rgba(195, 199, 197, 0.32);
   --md-default-fg-color--lightest: rgba(195, 199, 197, 0.07);
 
+  /* Admonition color shades */
+  --md-admonition-fg-color: var(--md-default-fg-color);
+  --md-admonition-bg-color: var(--md-default-bg-color);
+
   /* Code colors for dark theme */
   --md-code-fg-color: rgb(229 226 225);
-  --md-code-bg-color: rgb(32 31 31);
+  --md-code-bg-color: rgb(31 29 29);
 
   /* Code highlighting for dark theme */
   --md-code-hl-color: rgb(255 180 171);
@@ -132,7 +136,7 @@
 
   /* Typeset colors for dark theme */
   --md-typeset-color: rgb(229 226 223);
-  --md-typeset-a-color: rgb(192 202 179);
+  --md-typeset-a-color: var(--brand-accent);
   --md-typeset-kbd-color: rgb(28 27 27);
   --md-typeset-kbd-border-color: rgb(141 146 143);
 
@@ -141,203 +145,24 @@
   --md-typeset-table-color--light: rgba(195, 199, 197, 0.035);
 
   /* Admonition colors for dark theme */
-  --md-admonition-bg-color: rgb(32 31 31);
+  --md-admonition-bg-color: rgb(31 29 29);
 
   /* Warning colors for dark theme */
   --md-warning-fg-color: rgb(229 226 223);
   --md-warning-bg-color: rgb(147 0 10);
 
   /* Footer colors for dark theme */
-  --md-footer-bg-color: rgb(20 19 19);
+  --md-footer-bg-color: rgb(31 29 29);
   --md-footer-bg-color--dark: rgb(14 14 14);
   --md-footer-fg-color: rgb(229 226 225);
 }
 
-/* Enhanced component styling with accessibility focus */
-
-/* Header enhancements */
-.md-header {
-  border-bottom: 1px solid hsla(75, 24%, 12%, 0.1);
-  backdrop-filter: blur(10px);
+[data-md-color-scheme="light-change"] img[src$="#only-dark"],
+[data-md-color-scheme="light-change"] img[src$="#gh-dark-mode-only"] {
+  display: none; /* Hide dark images in light mode */
 }
 
-/* Navigation active states */
-.md-nav__item--active > .md-nav__link {
-  color: var(--brand-primary);
-  font-weight: 600;
-}
-
-.md-nav__link:hover {
-  color: var(--brand-primary);
-  transition: color 0.2s ease-in-out;
-}
-
-.md-nav__link:focus {
-  color: var(--brand-primary);
-  outline: 2px solid var(--brand-accent);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-
-/* Button styling with accessibility focus */
-.md-button {
-  background-color: var(--brand-primary);
-  border-color: var(--brand-primary);
-  color: white;
-  font-weight: 500;
-  transition: all 0.2s ease-in-out;
-  border-radius: 6px;
-}
-
-.md-button:hover {
-  background-color: #151b10;
-  border-color: #151b10;
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px hsla(75, 24%, 12%, 0.25);
-}
-
-.md-button:focus {
-  outline: 2px solid var(--brand-accent);
-  outline-offset: 2px;
-}
-
-.md-button:active {
-  transform: translateY(0);
-}
-
-/* Table styling */
-.md-typeset table:not([class]) {
-  border: 1px solid hsla(75, 24%, 12%, 0.2);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.md-typeset table:not([class]) th {
-  background-color: hsla(48, 20%, 96%, 1);
-  color: var(--md-default-fg-color);
-  font-weight: 600;
-}
-
-[data-md-color-scheme="dark-change"] .md-typeset table:not([class]) th {
-  background-color: hsla(75, 24%, 12%, 1);
-  color: var(--md-default-fg-color);
-}
-
-/* Admonition styling with better contrast */
-.md-typeset .admonition {
-  border-left: 4px solid var(--brand-primary);
-  background-color: hsla(48, 20%, 98%, 1);
-  border-radius: 0 6px 6px 0;
-}
-
-[data-md-color-scheme="dark-change"] .md-typeset .admonition {
-  background-color: hsla(75, 24%, 10%, 1);
-}
-
-.md-typeset .admonition.note {
-  border-left-color: var(--brand-light);
-}
-
-.md-typeset .admonition.warning {
-  border-left-color: var(--brand-warning);
-}
-
-.md-typeset .admonition.danger {
-  border-left-color: hsla(0, 67%, 50%, 1);
-}
-
-.md-typeset .admonition.success {
-  border-left-color: var(--brand-primary);
-}
-
-/* Code block enhancements */
-.md-typeset pre > code {
-  border-radius: 8px;
-}
-
-.md-typeset .highlight {
-  border-radius: 8px;
-}
-
-/* Search enhancements */
-.md-search__input {
-  border-radius: 8px;
-}
-
-.md-search__input:focus {
-  outline: 2px solid var(--brand-accent);
-  outline-offset: 2px;
-}
-
-/* Tab styling */
-.md-tabs {
-  background-color: var(--brand-primary);
-  color: white;
-}
-
-.md-tabs__link {
-  color: hsla(0, 0%, 100%, 0.8);
-  font-weight: 500;
-}
-
-.md-tabs__link:hover {
-  color: white;
-}
-
-.md-tabs__link--active {
-  color: white;
-  font-weight: 600;
-}
-
-/* Sidebar enhancements */
-.md-sidebar {
-  border-right: 1px solid hsla(75, 24%, 12%, 0.1);
-}
-
-[data-md-color-scheme="dark-change"] .md-sidebar {
-  border-right-color: hsla(48, 20%, 95%, 0.1);
-}
-
-/* Content enhancements */
-.md-content {
-  border-radius: 12px 12px 0 0;
-}
-
-/* Footer styling */
-.md-footer {
-  background: linear-gradient(135deg, var(--brand-primary) 0%, #10130c 100%);
-}
-
-/* Skip link for accessibility */
-.md-skip {
-  background-color: var(--brand-primary);
-  color: white;
-  border-radius: 4px;
-}
-
-.md-skip:focus {
-  outline: 2px solid var(--brand-accent);
-  outline-offset: 2px;
-}
-
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-  :root {
-    --md-primary-fg-color: #000000;
-    --md-accent-fg-color: var(--brand-accent);
-  }
-
-  [data-md-color-scheme="dark-change"] {
-    --md-primary-fg-color: #ffffff;
-    --md-accent-fg-color: var(--brand-warning);
-  }
-}
-
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
+[data-md-color-scheme="dark-change"] img[src$="#only-light"],
+[data-md-color-scheme="dark-change"] img[src$="#gh-light-mode-only"] {
+  display: none; /* Hide dark images in light mode */
 }
