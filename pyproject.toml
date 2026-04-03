@@ -14,6 +14,7 @@ dependencies = [
   "requests",
   "s3fs",
   "geopandas>=1.0.1",
+  "mkdocstrings[python]>=0.30.0",
 ]
 
 [build-system]
@@ -120,6 +121,11 @@ fix = true
 
 [tool.nbqa.addopts]
 ruff = ["--extend-ignore=E402,T201,B015,B018,NPY002,UP,FA"]
+
+[dependency-groups]
+dev = [
+    "mkdocs-material>=9.6.15",
+]
 # E402 -> imports on top
 # T201 -> print found
 # B015 & B018 -> useless expression (used to show values in ipynb)

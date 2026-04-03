@@ -371,6 +371,7 @@ dependencies = [
     { name = "boto3" },
     { name = "botocore" },
     { name = "geopandas" },
+    { name = "mkdocstrings", extra = ["python"] },
     { name = "numpy" },
     { name = "rasterio" },
     { name = "requests" },
@@ -382,6 +383,7 @@ dependencies = [
 dev = [
     { name = "boto3-stubs" },
     { name = "ipykernel" },
+    { name = "mkdocs-material" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -402,6 +404,7 @@ requires-dist = [
     { name = "boto3" },
     { name = "botocore" },
     { name = "geopandas", specifier = ">=1.0.1" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.30.0" },
     { name = "numpy" },
     { name = "rasterio", specifier = ">=1.4.4" },
     { name = "requests" },
@@ -413,6 +416,7 @@ requires-dist = [
 dev = [
     { name = "boto3-stubs", specifier = ">=1.35.10" },
     { name = "ipykernel", specifier = ">=6.29.5" },
+    { name = "mkdocs-material", specifier = ">=9.6.15" },
     { name = "mypy", specifier = ">=1.14.1" },
     { name = "pre-commit", specifier = ">=3.8.0" },
     { name = "pytest", specifier = ">=8.3.4" },

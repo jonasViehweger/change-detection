@@ -95,6 +95,7 @@ def start_monitor(
             be fit on the year before `monitoring_start`.
         geometry_path (str | PathLike): Path to the geometry to use, must be a file format compatible with fiona.
             Only Polygons will be considered
+        id_column (str): Column name in the provided geometry to use as ID for each geometry. IDs must be of type int
         resolution (float): Resolution of a single pixel in meters
         datasource (str): Data source used for monitoring. One of "ARPS, S2L2A"
         harmonics (int): Number of harmonics. First order harmonics have a period of 1 year,
