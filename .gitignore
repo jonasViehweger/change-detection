@@ -109,3 +109,4 @@ scripts/data/
 **/node_modules/
 
 .env*
+.test.json
