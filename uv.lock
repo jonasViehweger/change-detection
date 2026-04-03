@@ -373,6 +373,7 @@ dependencies = [
     { name = "geopandas" },
     { name = "numpy" },
     { name = "rasterio" },
+    { name = "requests" },
     { name = "s3fs" },
     { name = "toml" },
 ]
@@ -403,6 +404,7 @@ requires-dist = [
     { name = "geopandas", specifier = ">=1.0.1" },
     { name = "numpy" },
     { name = "rasterio", specifier = ">=1.4.4" },
+    { name = "requests", specifier = ">=2.32.3" },
     { name = "s3fs" },
     { name = "toml" },
 ]
