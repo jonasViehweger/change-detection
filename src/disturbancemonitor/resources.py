@@ -1,3 +1,4 @@
+import base64
 import datetime
 import json
 import os
@@ -126,6 +127,13 @@ class SHClient:
         self.auth_url = auth_url
         self.client.fetch_token(self.auth_url)
 
+    def domain_account_id(self) -> str:
+        token = self.client.token["access_token"]
+        payload_b64 = token.split(".")[1]
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return payload["user_context_id"]
+
     def get_token(self) -> None:
         if self.client.token.is_expired():
             self.client.fetch_token(self.auth_url)
@@ -218,15 +226,17 @@ class SHConfiguration(Resource):
         self.monitor_name = monitor_name
         self.base_url = base_url
         self.url = base_url + "/configuration/v1"
+        self.instances_url = base_url + "/api/v2/configuration/instances"
         self.instance_id = instance_id
 
     def create_instance(self) -> str:
         instance_data = {
             "name": f"Disturbance Monitor - {self.monitor_name}",
             "description": "Output of the disturbance monitoring",
+            "domainAccountId": self.client.domain_account_id(),
             "additionalData": {"showWarnings": False, "showLogo": False, "imageQuality": 80, "disabled": False},
         }
-        instance = self.client.post(self.url + "/wms/instances", json=instance_data)
+        instance = self.client.post(self.instances_url, json=instance_data)
         try:
             instance.raise_for_status()
         except HTTPError as e:
@@ -293,20 +303,14 @@ class SHConfiguration(Resource):
             "title": title,
             "id": title.upper(),
             "description": "",
-            "datasetSource": {
-                "@id": f"{self.url}/datasets/CUSTOM/sources/10",
-                "id": 10,
-                "description": "Bring Your Own COG",
-                "settings": {"indexServiceUrl": f"{self.base_url}/byoc"},
-                "dataset": {"@id": f"{self.url}/datasets/CUSTOM"},
-            },
-            "dataset": {"@id": f"{self.url}/datasets/CUSTOM"},
+            "datasetSourceId": 10,
+            "collectionType": "CUSTOM",
             "styles": [{"name": "default", "description": "Default layer style", "evalScript": evalscript}],
             "instanceId": self.instance_id,
             "defaultStyleName": "default",
             "datasourceDefaults": {"type": "CUSTOM", "mosaickingOrder": "mostRecent", "collectionId": byoc_id},
         }
-        layer_response = self.client.post(f"{self.url}/wms/instances/{self.instance_id}/layers", json=layer)
+        layer_response = self.client.post(f"{self.instances_url}/{self.instance_id}/layers", json=layer)
         try:
             layer_response.raise_for_status()
         except HTTPError as e:
@@ -329,6 +333,6 @@ class SHConfiguration(Resource):
 
     def delete(self) -> None:
         """Delete the Configuration"""
-        r = self.client.delete(f"{self.url}/wms/instances/{self.instance_id}")
+        r = self.client.delete(f"{self.instances_url}/{self.instance_id}")
         with suppress(HTTPError):
             r.raise_for_status()
