@@ -1,6 +1,6 @@
 [project]
 name = "disturbancemonitor"
-version = "0.3.0"
+version = "0.3.1"
 description = "A package to monitor disturbances in satellite time series in near real time."
 requires-python = ">= 3.12"
 readme = "README.md"
