@@ -9,7 +9,9 @@ const c =
   HARMONICS: 2,
   DATASOURCE: "ARPS",
   INPUT: "NDVI",
-  SENSITIVITY: 5,
+  METRIC: "RMSE",
+  SENSITIVITY_LOWER: 5,
+  SENSITIVITY_UPPER: 5,
   BOUND: 5
 }
 // CONFIG
@@ -20,7 +22,7 @@ var bands = new Array(c.HARMONICS * 2 + 1);
 for (let i = 0; i < c.HARMONICS * 2 + 1; i++) {
   bands[i] = "c_" + (i + 1);
 }
-bands.push("process", "metric", "disturbedDate")
+bands.push("process", "metric_lower", "metric_upper", "disturbedDate")
 
 function setup() {
   return {
@@ -43,8 +45,6 @@ function setup() {
 }
 
 function preProcessScenes(collections) {
-  // This creates the X (predictors) only once for the entire collection
-  // This fullX will be filtered in evaluate pixel depending on clouds
   var dates = collections[c.DATASOURCE].scenes.orbits.map(
     (scene) => new Date(scene.dateFrom)
   );
@@ -79,7 +79,7 @@ function evaluatePixel(samples, scenes) {
       const y = ds.inputs[c.INPUT].calculate(sample);
       const X = fullX[i];
       const pred = dot(X, beta);
-      process = updateProcessCCDC(pred, y, process, b.metric);
+      process = updateProcessCCDC(pred, y, process, b.metric_lower, b.metric_upper);
       if (process >= c.BOUND) {
         disturbedDate = currentDate
         monitorResults[currentDate]["disturbedPixels"]++;
@@ -94,13 +94,21 @@ function updateOutputMetadata(scenes, inputMetadata, outputMetadata){
   outputMetadata.userData = {"monitorResults": monitorResults}
 }
 
-function updateProcessCCDC(pred, actual, process, rmse = 1) {
+function updateProcessCCDC(pred, actual, process, metric_lower, metric_upper) {
   const residual = pred - actual;
-  if (Math.abs(residual) > c.SENSITIVITY * rmse) {
-    return ++process;
+  var outlier;
+  if (c.METRIC === "IQR") {
+    const iqr = metric_upper - metric_lower;
+    outlier = residual < metric_lower - c.SENSITIVITY_LOWER * iqr ||
+              residual > metric_upper + c.SENSITIVITY_UPPER * iqr;
   } else {
-    return 0;
+    outlier = residual < -c.SENSITIVITY_LOWER * metric_lower ||
+              residual > c.SENSITIVITY_UPPER * metric_upper;
   }
+  if (outlier) {
+    return ++process;
+  }
+  return 0;
 }
 
 // DISCARD FROM HERE

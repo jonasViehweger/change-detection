@@ -7,7 +7,7 @@ for (let i = 0; i < HARMONICS * 2 + 1; i++) {
   bands[i] = "c" + (i + 1);
 }
 bands[bands.length - 2] = "process";
-bands[bands.length - 1] = "rmse";
+bands[bands.length - 1] = "metric_lower";
 
 function setup() {
   return {
@@ -56,7 +56,7 @@ function evaluatePixel(samples, scenes) {
   userData.pred = [];
   userData.observed = [];
   userData.dates = [];
-  userData.rmse = b.rmse;
+  userData.metric_lower = b.metric_lower;
 
   for (let i = 0; i < samples.ARPS.length; i++) {
     const sample = samples.ARPS[i];

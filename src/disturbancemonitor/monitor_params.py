@@ -20,8 +20,9 @@ class MonitorParameters:
     datasource_id: str | None = None
     harmonics: int = 2
     signal: Literal["NDVI"] = "NDVI"
-    metric: Literal["RMSE"] = "RMSE"
-    sensitivity: float = 5
+    metric: Literal["RMSE", "IQR"] = "RMSE"
+    sensitivity_lower: float = 5
+    sensitivity_upper: float = 5
     boundary: float = 5
     endpoint: EndpointTypes = "SENTINEL_HUB"
     state: str = "NOT_INITIALIZED"

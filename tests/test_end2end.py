@@ -63,6 +63,7 @@ def test_process_api(load_env, endpoint, geojson_input):  # noqa: ARG001
         overwrite=True,
         resolution=100,
         endpoint=endpoint,
+        metric="IQR",
     )
     del monitor
     monitor_reloaded = dm.load_monitor(monitor_name, backend="ProcessAPI")

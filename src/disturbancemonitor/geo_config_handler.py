@@ -79,7 +79,8 @@ class GeoConfigHandler:
             harmonics INTEGER NOT NULL,
             signal TEXT NOT NULL,
             metric TEXT NOT NULL,
-            sensitivity REAL NOT NULL,
+            sensitivity_lower REAL NOT NULL,
+            sensitivity_upper REAL NOT NULL,
             boundary REAL NOT NULL,
             endpoint TEXT NOT NULL,
             state TEXT NOT NULL
@@ -162,7 +163,7 @@ class GeoConfigHandler:
 
         # Insert schema version
         cursor.execute("INSERT OR REPLACE INTO metadata VALUES (?, ?)", ("schema_version", "4"))
-        logger.info("GeoPackage initialization completed with schema version 3")
+        logger.info("GeoPackage initialization completed with schema version 4")
 
         conn.commit()
         conn.close()

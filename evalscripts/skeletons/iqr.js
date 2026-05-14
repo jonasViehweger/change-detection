@@ -48,6 +48,13 @@ function preProcessScenes(collections) {
   return collections;
 }
 
+function percentile(sorted, p) {
+  const idx = p * (sorted.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+}
+
 function evaluatePixel(samples) {
   if (samples[c.DATASOURCE].length == 0) {
     return [NaN, NaN];
@@ -61,7 +68,6 @@ function evaluatePixel(samples) {
   if (residuals.length == 0) {
     return [NaN, NaN];
   }
-  const mse = residuals.reduce((sum, r) => sum + r * r, 0) / residuals.length;
-  const rmse = Math.sqrt(mse);
-  return [rmse, rmse];
+  residuals.sort((a, b) => a - b);
+  return [percentile(residuals, 0.25), percentile(residuals, 0.75)];
 }

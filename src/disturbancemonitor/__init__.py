@@ -16,7 +16,7 @@ class MonitorInitializationError(Exception):
 BACKENDS = {"ProcessAPI": ProcessAPI, "AsyncAPI": AsyncAPI, "FreeCDSEProcessAPI": FreeCDSEProcessAPI}
 BackendTypes = Literal["ProcessAPI", "AsyncAPI", "FreeCDSEProcessAPI"]
 SignalTypes = Literal["NDVI"]
-MetricTypes = Literal["RMSE"]
+MetricTypes = Literal["RMSE", "IQR"]
 DatasourceTypes = Literal["S2L2A", "ARPS"]
 
 
@@ -67,7 +67,8 @@ def start_monitor(
     harmonics: int = 2,
     signal: SignalTypes = "NDVI",
     metric: MetricTypes = "RMSE",
-    sensitivity: float = 5.0,
+    sensitivity_lower: float = 5.0,
+    sensitivity_upper: float = 5.0,
     boundary: float = 5.0,
     backend: BackendTypes = "ProcessAPI",
     endpoint: EndpointTypes = "SENTINEL_HUB",
@@ -101,9 +102,11 @@ def start_monitor(
         harmonics (int): Number of harmonics. First order harmonics have a period of 1 year,
             second order a period of half a year and so on. Used during fitting of the model
         signal (str): Which signals to fit the model on. Must be "NDVI".
-        metric (str): Metric to use as boundary condition.
-        sensitivity (float): How sensitive the monitoring is to changes. The smaller the value the more sensitive.
-            Everything larger than sensitivity*metric will be signaled as a possible disturbance
+        metric (str): Metric to use as boundary condition. One of "RMSE" or "IQR".
+        sensitivity_lower (float): Sensitivity for negative residuals (below lower threshold).
+            The smaller the value the more sensitive.
+        sensitivity_upper (float): Sensitivity for positive residuals (above upper threshold).
+            The smaller the value the more sensitive.
         boundary (float): Persistence of change. How many acquisitions in a row need to be
             identified as possible disturbance to confirm the disturbance.
         backend (Backend): One of ProcessAPI or AsyncAPI. Process API can only handle areas
@@ -134,7 +137,8 @@ def start_monitor(
         harmonics=harmonics,
         signal=signal,
         metric=metric,
-        sensitivity=sensitivity,
+        sensitivity_lower=sensitivity_lower,
+        sensitivity_upper=sensitivity_upper,
         boundary=boundary,
         last_monitored=last_monitored,
         endpoint=endpoint,

@@ -62,7 +62,9 @@ def prepare_evalscript(monitor_params: MonitorParameters, path: Path | Traversab
         "HARMONICS": monitor_params.harmonics,
         "DATASOURCE": monitor_params.datasource,
         "INPUT": monitor_params.signal,
-        "SENSITIVITY": monitor_params.sensitivity,
+        "METRIC": monitor_params.metric,
+        "SENSITIVITY_LOWER": monitor_params.sensitivity_lower,
+        "SENSITIVITY_UPPER": monitor_params.sensitivity_upper,
         "BOUND": monitor_params.boundary,
     }
     split_config = evalscript.split("// CONFIG")
@@ -248,7 +250,7 @@ class ProcessAPI(Backend):
 
         sigma_request = self.base_request(
             sigma_data,
-            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("rmse.cjs")),
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath(f"{self.monitor_params.metric.lower()}.cjs")),
             geometry,
         )
 
@@ -569,7 +571,7 @@ class FreeCDSEProcessAPI(Backend):
 
         sigma_request = self.base_request(
             sigma_data,
-            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath("rmse.cjs")),
+            prepare_evalscript(self.monitor_params, DATA_PATH.joinpath(f"{self.monitor_params.metric.lower()}.cjs")),
             geometry,
         )
 

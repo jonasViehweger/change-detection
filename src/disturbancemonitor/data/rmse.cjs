@@ -35,6 +35,19 @@ function dot(A, B) {
     return result;
   }
 
+function computeResiduals(samples, datasource, fullX, beta, ds, input) {
+  var residuals = [];
+  for (let i = 0; i < samples[datasource].length; i++) {
+    const sample = samples[datasource][i];
+    if (ds.validate(sample)) {
+      const y = ds.inputs[input].calculate(sample);
+      const pred = dot(fullX[i], beta);
+      residuals.push(pred - y);
+    }
+  }
+  return residuals;
+}
+
 var dataSources = {
     ARPS: {
         validBands: ["dataMask"],
@@ -108,15 +121,13 @@ function setup() {
       },
     ],
     output: {
-      bands: 1,
+      bands: 2,
       sampleType: "FLOAT32",
     },
   };
 }
 
 function preProcessScenes(collections) {
-  // This creates the X (predictors) only once for the entire collection
-  // This fullX will be filtered in evaluate pixel depending on clouds
   var dates = collections[c.DATASOURCE].scenes.orbits.map(
     (scene) => new Date(scene.dateFrom)
   );
@@ -126,28 +137,18 @@ function preProcessScenes(collections) {
 
 function evaluatePixel(samples) {
   if (samples[c.DATASOURCE].length == 0) {
-    return [NaN];
+    return [NaN, NaN];
   }
-  var mse = 0;
-  var valid = 0;
   const b = samples.beta[0];
   var beta = new Array(c.HARMONICS * 2 + 1);
   for (let i = 0; i < beta.length; i++) {
     beta[i] = b["c_" + (i + 1)];
   }
-  for (let i = 0; i < samples[c.DATASOURCE].length; i++) {
-    const sample = samples[c.DATASOURCE][i];
-    if (ds.validate(sample)) {
-      const y = ds.inputs[c.INPUT].calculate(sample);
-      const X = fullX[i];
-      const pred = dot(X, beta);
-      const residual = pred - y;
-      mse += Math.pow(residual, 2);
-      valid++;
-    }
+  const residuals = computeResiduals(samples, c.DATASOURCE, fullX, beta, ds, c.INPUT);
+  if (residuals.length == 0) {
+    return [NaN, NaN];
   }
-  if (valid == 0) {
-    return [NaN, NaN, NaN];
-  }
-  return [Math.sqrt(mse / valid)];
+  const mse = residuals.reduce((sum, r) => sum + r * r, 0) / residuals.length;
+  const rmse = Math.sqrt(mse);
+  return [rmse, rmse];
 }
