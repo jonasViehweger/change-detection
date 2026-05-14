@@ -159,16 +159,18 @@ class BYOC(Resource):
         folder_name: str,
         sh_client: SHClient,
         byoc_id: str | None = None,
+        collection_name: str | None = None,
     ) -> None:
         self.folder_name = folder_name
         self.bucket_name = bucket_name
+        self.collection_name = collection_name or folder_name
         self.client = sh_client
         self.base_url = base_url
         self.byoc_id = byoc_id
         self.url = base_url + "/api/v1/byoc/collections"
 
     def create_byoc(self) -> str:
-        new_collection = {"name": self.folder_name, "s3Bucket": self.bucket_name}
+        new_collection = {"name": self.collection_name, "s3Bucket": self.bucket_name}
         byoc = self.client.post(self.url, json=new_collection)
         byoc.raise_for_status()
         self.byoc_id = byoc.json()["data"]["id"]

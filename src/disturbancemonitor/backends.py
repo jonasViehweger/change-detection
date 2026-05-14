@@ -1,8 +1,7 @@
 import datetime
 import json
-import random
-import string
 import tarfile
+import uuid
 from copy import copy
 from importlib.resources.abc import Traversable
 from io import BytesIO
@@ -89,15 +88,22 @@ class ProcessAPI(Backend):
         self.urls = Endpoints[monitor_params.endpoint].value
         self.url = self.urls.base_url + "/api/v1/process"
 
-        self.monitor_id = monitor_id or "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        self.monitor_id = monitor_id or str(uuid.uuid4())
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.monitor_id).lower()
-        self.folder_name = folder_name or (monitor_params.name).lower()
+        self.folder_name = folder_name or monitor_params.name
         self.s3_profile = s3_profile
         self.sh_profile = sh_profile
         self.client = SHClient(self.urls.auth_url, self.sh_profile)
         self.byoc_id = byoc_id
         self.instance_id = instance_id
-        self.byoc = BYOC(self.urls.base_url, self.bucket_name, self.folder_name, self.client, self.byoc_id)
+        self.byoc = BYOC(
+            self.urls.base_url,
+            self.bucket_name,
+            self.folder_name,
+            self.client,
+            self.byoc_id,
+            collection_name=monitor_params.display_name or monitor_params.name,
+        )
         self.s3 = S3(self.bucket_name, self.folder_name, self.s3_profile)
         self.sh_configuration = SHConfiguration(self.urls.base_url, self.client, monitor_params.name, self.instance_id)
         self.rollback = rollback
@@ -400,9 +406,9 @@ class FreeCDSEProcessAPI(Backend):
         self.url = self.urls.base_url + "/api/v1/process"
 
         self.account_id = account_id
-        self.monitor_id = monitor_id or "".join(random.choices(string.ascii_lowercase + string.digits, k=8))
+        self.monitor_id = monitor_id or str(uuid.uuid4())
         self.bucket_name = bucket_name or (monitor_params.name + "-" + self.monitor_id).lower()
-        self.folder_name = folder_name or (monitor_params.name).lower()
+        self.folder_name = folder_name or monitor_params.name
         self.s3_profile = s3_profile
         self.sh_profile = sh_profile
         self.byoc_sh_profile = byoc_sh_profile
@@ -410,7 +416,14 @@ class FreeCDSEProcessAPI(Backend):
         self.byoc_client = SHClient(self.urls.auth_url, self.byoc_sh_profile)
         self.byoc_id = byoc_id
         self.instance_id = instance_id
-        self.byoc = BYOC(self.urls.base_url, self.bucket_name, self.folder_name, self.byoc_client, self.byoc_id)
+        self.byoc = BYOC(
+            self.urls.base_url,
+            self.bucket_name,
+            self.folder_name,
+            self.byoc_client,
+            self.byoc_id,
+            collection_name=monitor_params.display_name or monitor_params.name,
+        )
         self.s3 = S3(self.bucket_name, self.folder_name, self.s3_profile)
         self.sh_configuration = SHConfiguration(self.urls.base_url, self.client, monitor_params.name, self.instance_id)
         self.rollback = rollback

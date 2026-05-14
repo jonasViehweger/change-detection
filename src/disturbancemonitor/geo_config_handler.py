@@ -70,6 +70,7 @@ class GeoConfigHandler:
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS monitors (
             name TEXT PRIMARY KEY,
+            display_name TEXT,
             monitoring_start TEXT NOT NULL,
             last_monitored TEXT NOT NULL,
             resolution REAL NOT NULL,
@@ -160,7 +161,7 @@ class GeoConfigHandler:
             logger.info("Migrated backend configurations to JSON format", extra={"n_backends": len(existing_backends)})
 
         # Insert schema version
-        cursor.execute("INSERT OR REPLACE INTO metadata VALUES (?, ?)", ("schema_version", "3"))
+        cursor.execute("INSERT OR REPLACE INTO metadata VALUES (?, ?)", ("schema_version", "4"))
         logger.info("GeoPackage initialization completed with schema version 3")
 
         conn.commit()

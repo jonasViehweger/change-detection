@@ -15,6 +15,7 @@ class MonitorParameters:
     last_monitored: datetime.date
     geometry_path: str | PathLike
     resolution: float
+    display_name: str | None = None
     datasource: Literal["S2L2A", "ARPS"] = "S2L2A"
     datasource_id: str | None = None
     harmonics: int = 2
